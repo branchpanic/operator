@@ -1,46 +1,16 @@
 use std::cmp::min;
 
-type Time = usize;  // in samples
-
-#[derive(Default, Debug, Clone)]
-pub struct Clip {
-    start: Time,
-    data: Vec<f32>,
-}
-
-impl Clip {
-    pub fn new(start: Time, data: Vec<f32>) -> Self {
-        Clip { start, data }
-    }
-
-    pub fn end(&self) -> Time {
-        self.start + self.data.len() as Time
-    }
-}
+use crate::clip::Clip;
+use crate::Time;
 
 #[derive(Default)]
-pub struct Session {
-    clips: Vec<Clip>
+pub struct Track {
+    clips: Vec<Clip>,
 }
 
-fn mix(sources: &[&[f32]], into: &mut [f32]) {
-    for i in 0..into.len() {
-        into[i] = 0f32;
-        for source in sources {
-            if i >= source.len() {
-                continue;
-            }
-
-            into[i] += source[i];
-        }
-
-        into[i] /= sources.len() as f32;
-    }
-}
-
-impl Session {
-    pub fn new() -> Session {
-        Session::default()
+impl Track {
+    pub fn new() -> Track {
+        Track::default()
     }
 
     pub fn add_clip(&mut self, clip: Clip) {
@@ -71,7 +41,7 @@ impl Session {
         best
     }
 
-    pub fn render(&self, into: &mut[f32]) {
+    pub fn render(&self, into: &mut [f32]) {
         into.fill(0.0f32);
 
         let render_end = into.len();
@@ -87,7 +57,7 @@ impl Session {
             }
 
             let copied_amt = end - current_clip.start;
-            into[t..t+copied_amt].copy_from_slice(&current_clip.data[..copied_amt]);
+            into[t..t + copied_amt].copy_from_slice(&current_clip.data[..copied_amt]);
 
             opt_clip = opt_next_clip;
         }
@@ -99,29 +69,16 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_mix() {
-        let c1 = [1.0f32, 1.0f32, 1.0f32, 1.0f32];
-        let c2 = [1.0f32, 1.0f32, 1.0f32];
-        let c3 = [1.0f32, 1.0f32];
-        let c4 = [1.0f32];
-        let mut result = [0f32; 5];
-        mix(&[&c1, &c2, &c3, &c4], &mut result);
-        assert_eq!(result, [1.0f32, 0.75f32, 0.5f32, 0.25f32, 0.0f32]);
-    }
-
-    #[test]
     fn test_add_clip() {
         let clip = Clip::new(0, vec![1.0f32]);
-        let mut session = Session::new();
+        let mut session = Track::new();
         session.add_clip(clip.clone());
 
         if let Some(added) = session.clips.first()
         {
             assert_eq!(added.start, clip.start);
             assert_eq!(added.data, clip.data);
-        }
-        else
-        {
+        } else {
             assert!(false, "clip was not added");
         }
     }
@@ -130,7 +87,7 @@ mod test {
     fn test_render_overlapping() {
         let c1 = Clip::new(0, vec![1.0f32; 5]);
         let c2 = Clip::new(2, vec![2.0f32; 5]);
-        let mut session = Session::new();
+        let mut session = Track::new();
         session.add_clip(c1);
         session.add_clip(c2);
         let mut buf = [0f32; 8];
@@ -142,7 +99,7 @@ mod test {
     fn test_render_non_overlapping() {
         let c1 = Clip::new(1, vec![1.0f32; 2]);
         let c2 = Clip::new(4, vec![2.0f32; 2]);
-        let mut session = Session::new();
+        let mut session = Track::new();
         session.add_clip(c1);
         session.add_clip(c2);
         let mut buf = [0f32; 7];
@@ -154,7 +111,7 @@ mod test {
     fn test_render_overlapping_cut() {
         let c1 = Clip::new(0, vec![1.0f32; 5]);
         let c2 = Clip::new(2, vec![2.0f32; 1]);
-        let mut session = Session::new();
+        let mut session = Track::new();
         session.add_clip(c1);
         session.add_clip(c2);
         let mut buf = [0f32; 5];
