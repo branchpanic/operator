@@ -13,12 +13,21 @@ impl Track {
         Track::default()
     }
 
-    pub fn add_clip(&mut self, clip: Clip) {
+    pub fn add_clip(&mut self, clip: Clip) -> &Clip {
         self.clips.push(clip);
+        self.clips.last().unwrap()
     }
 
     fn first_clip(&self) -> Option<&Clip> {
         self.clips.iter().min_by_key(|c| { c.start })
+    }
+
+    fn last_clip(&self) -> Option<&Clip> {
+        // Note: assumes that overlapping clips cut previous ones.
+        // c1:   ---xxxxx------
+        // c2:   yyyyyyyyyyyy--
+        // cut:  yyyxxxxx------
+        self.clips.iter().max_by_key(|c| { c.start })
     }
 
     fn next_clip(&self, t: Time) -> Option<&Clip> {
@@ -39,6 +48,17 @@ impl Track {
         }
 
         best
+    }
+
+    pub fn render_all(&self) -> Vec<f32> {
+        let end = match self.last_clip() {
+            None => return Vec::new(),
+            Some(last_clip) => last_clip.end(),
+        };
+
+        let mut buf = vec![0.0f32; end];
+        self.render(buf.as_mut_slice());
+        buf
     }
 
     pub fn render(&self, into: &mut [f32]) {
