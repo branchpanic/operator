@@ -1,9 +1,10 @@
 use std::cmp::min;
+use serde::{Deserialize, Serialize};
 
 use crate::clip::Clip;
 use crate::Time;
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct Track {
     clips: Vec<Clip>,
 }

@@ -1,7 +1,8 @@
 use std::error::Error;
+use serde::{Deserialize, Serialize};
 use crate::Time;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Clip {
     pub start: Time,
     pub data: Vec<f32>,
@@ -15,7 +16,7 @@ impl Clip {
     // TODO: Session should probably own sample data, since this will load from disk every time.
     // (However, this isn't actually on the critical path. Not many samples will be loaded directly
     // onto the timeline. Instead, they'll be played through instruments.)
-    pub fn from_file(start: Time, path: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn from_file(start: Time, path: &String) -> Result<Self, Box<dyn Error>> {
         let mut reader = hound::WavReader::open(path)?;
         let spec = reader.spec();
 
