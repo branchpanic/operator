@@ -6,7 +6,7 @@ pub struct Session {
     recording_at: Time,
     record_data: Vec<f32>,
 
-    track: Track,
+    pub track: Track,
 }
 
 impl Session {
@@ -32,8 +32,8 @@ impl Session {
         Some(self.track.add_clip(clip))
     }
 
-    pub fn render(&self, into: &mut [f32]) {
-        self.track.render(into);
+    pub fn render(&self, start: Time, into: &mut [f32]) {
+        self.track.render(start, into);
     }
 
     pub fn render_all(&self) -> Vec<f32> {

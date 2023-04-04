@@ -10,7 +10,7 @@ type Time = usize;  // in samples
 
 fn mix(sources: &[&[f32]], into: &mut [f32]) {
     for i in 0..into.len() {
-        into[i] = 0f32;
+        into[i] = 0.0;
         for source in sources {
             if i >= source.len() {
                 continue;

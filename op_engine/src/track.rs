@@ -18,8 +18,8 @@ impl Track {
         self.clips.last().unwrap()
     }
 
-    fn first_clip(&self) -> Option<&Clip> {
-        self.clips.iter().min_by_key(|c| { c.start })
+    pub fn add_new_clip(&mut self, at: Time, data: &[f32]) -> &Clip {
+        self.add_clip(Clip::new(at, Vec::from(data)))
     }
 
     fn last_clip(&self) -> Option<&Clip> {
@@ -50,22 +50,30 @@ impl Track {
         best
     }
 
+    fn clip_at(&self, t: Time) -> Option<&Clip> {
+        self.clips.iter().find(|c| { c.start <= t && c.end() > t })
+    }
+
     pub fn render_all(&self) -> Vec<f32> {
         let end = match self.last_clip() {
             None => return Vec::new(),
             Some(last_clip) => last_clip.end(),
         };
 
-        let mut buf = vec![0.0f32; end];
-        self.render(buf.as_mut_slice());
+        let mut buf = vec![0.0; end];
+        self.render(0, buf.as_mut_slice());
         buf
     }
 
-    pub fn render(&self, into: &mut [f32]) {
-        into.fill(0.0f32);
+    pub fn render(&self, start: Time, into: &mut [f32]) {
+        into.fill(0.0);
 
         let render_end = into.len();
-        let mut opt_clip = self.first_clip();
+        let mut opt_clip = self.clip_at(start);
+
+        if opt_clip.is_none() {
+            opt_clip = self.next_clip(start);
+        }
 
         while let Some(current_clip) = opt_clip {
             let t = current_clip.start;
@@ -111,7 +119,7 @@ mod test {
         session.add_clip(c1);
         session.add_clip(c2);
         let mut buf = [0f32; 8];
-        session.render(&mut buf);
+        session.render(0, &mut buf);
         assert_eq!(buf, [1.0f32, 1.0f32, 2.0f32, 2.0f32, 2.0f32, 2.0f32, 2.0f32, 0.0f32]);
     }
 
@@ -123,7 +131,7 @@ mod test {
         session.add_clip(c1);
         session.add_clip(c2);
         let mut buf = [0f32; 7];
-        session.render(&mut buf);
+        session.render(0, &mut buf);
         assert_eq!(buf, [0.0f32, 1.0f32, 1.0f32, 0.0f32, 2.0f32, 2.0f32, 0.0f32]);
     }
 
@@ -135,7 +143,7 @@ mod test {
         session.add_clip(c1);
         session.add_clip(c2);
         let mut buf = [0f32; 5];
-        session.render(&mut buf);
+        session.render(0, &mut buf);
         // Could possibly change the expected behavior to:
         //  (a)  [1, 1, 2, 1, 1]
         // Instead of:

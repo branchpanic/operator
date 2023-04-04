@@ -1,19 +1,28 @@
-use op_engine::*;
+use std::error::Error;
+use hound;
+use op_engine::{Clip, Session};
 
-fn main() {
-    let mut s = Session::new();
+fn main() -> Result<(), Box<dyn Error>> {
+    let mut session = Session::new();
+    session.track.add_clip(Clip::from_file(0, "samples/hat1_mono.wav")?);
+    session.track.add_clip(Clip::from_file(35097, "samples/hat1_mono.wav")?);
+    session.track.add_clip(Clip::from_file(35097 + (35097/2), "samples/hat1_mono.wav")?);
 
-    s.record_start(0);
-    s.record_append(&[1.0, 2.0, 3.0, 4.0]);
-    s.record_end();
+    let result = session.render_all();
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 44100,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
 
-    s.record_start(2);
-    s.record_append(&[5.0, 6.0, 7.0, 8.0]);
-    s.record_end();
+    let mut writer = hound::WavWriter::create("out.wav", spec)?;
 
-    s.record_start(16);
-    s.record_append(&[1.0, 2.0, 3.0, 4.0]);
-    s.record_end();
+    for sample in result {
+        writer.write_sample((sample * i16::MAX as f32) as i16)?;
+    }
 
-    println!("{:?}", s.render_all());
+    writer.finalize()?;
+
+    Ok(())
 }
