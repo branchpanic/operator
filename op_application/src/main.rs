@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
-use cpal::{Device, FromSample, Host, Sample, SizedSample, Stream, SupportedStreamConfig};
+use cpal::{FromSample, Host, Sample, SizedSample, Stream, SupportedStreamConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use repl_rs::{Command, Convert, Parameter, Repl, Value};
 use op_engine::{Clip, Session};
@@ -10,19 +10,21 @@ struct Context {
     stream: Stream,
 }
 
-fn load(args: HashMap<String, Value>, context: &mut Context) -> Result<Option<String>, Box<dyn Error>> {
+type CommandResult = anyhow::Result<Option<String>>;
+
+fn load(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
     let path: String = args["path"].convert()?;
     context.session = Session::load(&path)?;
     Ok(None)
 }
 
-fn save(args: HashMap<String, Value>, context: &mut Context) -> Result<Option<String>, Box<dyn Error>> {
+fn save(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
     let path: String = args["path"].convert()?;
     context.session.save(&path)?;
     Ok(None)
 }
 
-fn place(args: HashMap<String, Value>, context: &mut Context) -> Result<Option<String>, Box<dyn Error>> {
+fn place(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
     let clip_path: String = args["clip_path"].convert()?;
     let pos_sec: f32 = args["pos"].convert()?;
     let pos_samples = context.session.sec_to_samples(pos_sec);
@@ -30,18 +32,18 @@ fn place(args: HashMap<String, Value>, context: &mut Context) -> Result<Option<S
     Ok(None)
 }
 
-fn export(args: HashMap<String, Value>, context: &mut Context) -> Result<Option<String>, Box<dyn Error>> {
+fn export(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
     let path: String = args["path"].convert()?;
     context.session.export(&path)?;
     Ok(None)
 }
 
-fn play(_args: HashMap<String, Value>, context: &mut Context) -> Result<Option<String>, Box<dyn Error>> {
+fn play(_args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
     context.stream.play()?;
     Ok(None)
 }
 
-fn pause(_args: HashMap<String, Value>, context: &mut Context) -> Result<Option<String>, Box<dyn Error>> {
+fn pause(_args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
     context.stream.pause()?;
     Ok(None)
 }
@@ -84,7 +86,7 @@ where
     )?)
 }
 
-fn main() -> repl_rs::Result<()> {
+fn main() -> anyhow::Result<()> {
     let host = cpal::default_host();
     let device = host.default_output_device().expect("output device required");
     let config = device.default_output_config().expect("output config required");
@@ -137,5 +139,7 @@ fn main() -> repl_rs::Result<()> {
             Command::new("pause", pause)
         );
 
-    repl.run()
+    repl.run()?;
+
+    Ok(())
 }
