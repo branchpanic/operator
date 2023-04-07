@@ -35,4 +35,6 @@ impl Clip {
 
         Ok(Clip::new(samples))
     }
+
+    pub fn len(&self) -> usize { self.data.len() }
 }
