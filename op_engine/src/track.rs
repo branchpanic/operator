@@ -1,12 +1,33 @@
-use std::cmp::min;
 use serde::{Deserialize, Serialize};
 
 use crate::clip::Clip;
 use crate::Time;
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
+struct ClipInstance {
+    time: Time,
+    clip: Clip,
+}
+
+impl ClipInstance {
+    pub fn new(time: Time, clip: Clip) -> ClipInstance {
+        ClipInstance { time, clip }
+    }
+
+    /// Returns the first sample on the timeline that this clip is playing.
+    pub fn start(&self) -> Time {
+        self.time
+    }
+
+    /// Returns the first sample on the timeline after this clip ends.
+    pub fn end(&self) -> Time {
+        self.time + self.clip.data.len()
+    }
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Track {
-    clips: Vec<Clip>,
+    clips: Vec<ClipInstance>,
 }
 
 impl Track {
@@ -14,50 +35,33 @@ impl Track {
         Track::default()
     }
 
-    pub fn add_clip(&mut self, clip: Clip) -> &Clip {
-        self.clips.push(clip);
-        self.clips.last().unwrap()
+    pub fn add_clip(&mut self, time: Time, clip: Clip) -> &Clip {
+        self.clips.push(ClipInstance::new(time, clip));
+        &self.clips.last().unwrap().clip
     }
 
-    pub fn add_new_clip(&mut self, at: Time, data: &[f32]) -> &Clip {
-        self.add_clip(Clip::new(at, Vec::from(data)))
+    /// Returns the clip with the latest end sample.
+    fn last_clip(&self) -> Option<&ClipInstance> {
+        self.clips.iter()
+            .max_by_key(|c| { c.end() })
     }
 
-    fn last_clip(&self) -> Option<&Clip> {
-        // Note: assumes that overlapping clips cut previous ones.
-        // c1:   ---xxxxx------
-        // c2:   yyyyyyyyyyyy--
-        // cut:  yyyxxxxx------
-        self.clips.iter().max_by_key(|c| { c.start })
+    /// Returns the first clip after t.
+    fn next_clip(&self, t: Time) -> Option<&ClipInstance> {
+        self.clips.iter()
+            .filter(|c| c.start() > t)
+            .min_by_key(|c| c.start())
     }
 
-    fn next_clip(&self, t: Time) -> Option<&Clip> {
-        let mut best: Option<&Clip> = None;
-
-        for clip in &self.clips {
-            if clip.start <= t {
-                continue;
-            }
-
-            if let Some(prev_best) = best {
-                if clip.start < prev_best.start {
-                    best = Some(clip);
-                }
-            } else {
-                best = Some(clip);
-            }
-        }
-
-        best
-    }
-
-    fn clip_at(&self, t: Time) -> Option<&Clip> {
-        self.clips.iter().find(|c| { c.start <= t && c.end() > t })
+    /// Returns the first clip where clip start <= t < clip end.
+    fn clip_at(&self, t: Time) -> Option<&ClipInstance> {
+        self.clips.iter()
+            .rfind(|c| { c.start() <= t && c.end() > t })
     }
 
     pub fn render_all(&self) -> Vec<f32> {
         let end = match self.last_clip() {
-            None => return Vec::new(),
+            None => return vec![0.0; 0],
             Some(last_clip) => last_clip.end(),
         };
 
@@ -68,28 +72,7 @@ impl Track {
 
     pub fn render(&self, start: Time, into: &mut [f32]) {
         into.fill(0.0);
-
-        let render_end = into.len();
-        let mut opt_clip = self.clip_at(start);
-
-        if opt_clip.is_none() {
-            opt_clip = self.next_clip(start);
-        }
-
-        while let Some(current_clip) = opt_clip {
-            let t = current_clip.start;
-            let mut end = min(current_clip.end(), render_end);
-
-            let opt_next_clip = self.next_clip(t);
-            if let Some(next_clip) = opt_next_clip {
-                end = min(end, next_clip.end());
-            }
-
-            let copied_amt = end - current_clip.start;
-            into[t..t + copied_amt].copy_from_slice(&current_clip.data[..copied_amt]);
-
-            opt_clip = opt_next_clip;
-        }
+        todo!()
     }
 }
 
@@ -99,57 +82,121 @@ mod test {
 
     #[test]
     fn test_add_clip() {
-        let clip = Clip::new(0, vec![1.0f32]);
-        let mut session = Track::new();
-        session.add_clip(clip.clone());
+        let mut track = Track::new();
 
-        if let Some(added) = session.clips.first()
-        {
-            assert_eq!(added.start, clip.start);
-            assert_eq!(added.data, clip.data);
-        } else {
-            assert!(false, "clip was not added");
-        }
+        let clip = Clip::new(vec![1.0]);
+        let result = track.add_clip(0, clip.clone());
+        assert_eq!(clip.data, result.data);
+
+        let clip = Clip::new(vec![2.0]);
+        let result = track.add_clip(1, clip.clone());
+        assert_eq!(clip.data, result.data);
     }
 
     #[test]
-    fn test_render_overlapping() {
-        let c1 = Clip::new(0, vec![1.0f32; 5]);
-        let c2 = Clip::new(2, vec![2.0f32; 5]);
-        let mut session = Track::new();
-        session.add_clip(c1);
-        session.add_clip(c2);
-        let mut buf = [0f32; 8];
-        session.render(0, &mut buf);
-        assert_eq!(buf, [1.0f32, 1.0f32, 2.0f32, 2.0f32, 2.0f32, 2.0f32, 2.0f32, 0.0f32]);
+    fn test_last_clip() {
+        let mut track = Track::new();
+
+        assert!(track.last_clip().is_none(),
+                "last clip must be None when track does not contain clips");
+
+        // 1. only clip in the track should be the last clip
+        // last
+        // v
+        // 1--------------
+        let clip = Clip::new(vec![1.0]);
+        track.add_clip(0, clip.clone());
+        let last_clip = track.last_clip()
+            .expect("last clip must be present when track contains clips");
+
+        assert_eq!(clip.data, last_clip.clip.data);
+
+        // 2. two disjoint clips, latter should be the last clip
+        //   last
+        //   v
+        // 1-2------------
+        let clip = Clip::new(vec![2.0]);
+        track.add_clip(2, clip.clone());
+        let last_clip = track.last_clip()
+            .expect("last clip must be present when track contains clips");
+
+        assert_eq!(clip.data, last_clip.clip.data);
+
+        // 3. overlapping clips, clip with latest end should be the last clip
+        //          last
+        //          v
+        // 1-2------------
+        // 3333333333-----
+        let clip = Clip::new(vec![3.0; 10]);
+        track.add_clip(0, clip.clone());
+        let last_clip = track.last_clip()
+            .expect("last clip must be present when track contains clips");
+
+        assert_eq!(clip.data, last_clip.clip.data);
     }
 
     #[test]
-    fn test_render_non_overlapping() {
-        let c1 = Clip::new(1, vec![1.0f32; 2]);
-        let c2 = Clip::new(4, vec![2.0f32; 2]);
-        let mut session = Track::new();
-        session.add_clip(c1);
-        session.add_clip(c2);
-        let mut buf = [0f32; 7];
-        session.render(0, &mut buf);
-        assert_eq!(buf, [0.0f32, 1.0f32, 1.0f32, 0.0f32, 2.0f32, 2.0f32, 0.0f32]);
+    fn test_clip_at() {
+        let mut track = Track::new();
+
+        assert!(track.clip_at(0).is_none());
+
+        let clip = Clip::new(vec![1.0, 1.0]);
+        track.add_clip(0, clip.clone());
+
+        assert_eq!(clip.data, track.clip_at(0).unwrap().clip.data);
+        assert_eq!(clip.data, track.clip_at(1).unwrap().clip.data);
+        assert!(track.clip_at(2).is_none());
+
+        let short_clip = Clip::new(vec![2.0]);
+        track.add_clip(1, short_clip.clone());
+
+        assert_eq!(clip.data, track.clip_at(0).unwrap().clip.data);
+        assert_eq!(short_clip.data, track.clip_at(1).unwrap().clip.data,
+            "latest added clip should take precedence when overlapping");
+        assert!(track.clip_at(2).is_none());
     }
 
     #[test]
-    fn test_render_overlapping_cut() {
-        let c1 = Clip::new(0, vec![1.0f32; 5]);
-        let c2 = Clip::new(2, vec![2.0f32; 1]);
-        let mut session = Track::new();
-        session.add_clip(c1);
-        session.add_clip(c2);
-        let mut buf = [0f32; 5];
-        session.render(0, &mut buf);
-        // Could possibly change the expected behavior to:
-        //  (a)  [1, 1, 2, 1, 1]
-        // Instead of:
-        //  (b)  [1, 1, 2, 0, 0]
-        // However, we might want to implement (a) using overdubbing instead.
-        assert_eq!(buf, [1.0f32, 1.0f32, 2.0f32, 0.0f32, 0.0f32]);
+    fn test_next_clip() {
+        let mut track = Track::new();
+
+        assert!(track.next_clip(0).is_none());
+
+        // 1. query during clip should not return clip
+        // t
+        // v        next=None
+        // 11-----------
+        let clip = Clip::new(vec![1.0, 1.0]);
+        track.add_clip(0, clip.clone());
+        assert!(track.next_clip(0).is_none(),
+            "next_clip should not return clips where start <= t < end");
+
+        // 2. two disjoint clips, query during first should return second
+        // t  next
+        // v  v
+        // 11-2---------
+        let clip = Clip::new(vec![2.0]);
+        track.add_clip(3, clip.clone());
+        let result = track.next_clip(0).unwrap();
+        assert_eq!(3, result.time);
+        assert_eq!(clip.data, result.clip.data);
+        assert!(track.next_clip(3).is_none());
+
+        // 3. clips overlapping at t, query before overlap should return overlapping clip
+        // t
+        // v
+        // 11-2---------
+        // -3-----------
+        //  ^
+        //  next
+        let clip = Clip::new(vec![3.0]);
+        track.add_clip(1, clip.clone());
+        let result = track.next_clip(0).unwrap();
+        assert_eq!(1, result.time);
+        assert_eq!(clip.data, result.clip.data);
+
+        // 4. t is past end of all clips, query should return none
+        assert!(track.next_clip(1234).is_none());
     }
 }

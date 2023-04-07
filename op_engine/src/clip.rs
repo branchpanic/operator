@@ -1,8 +1,7 @@
 use crate::Time;
 
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Clip {
-    pub start: Time,
     pub data: Vec<f32>,
 }
 
@@ -13,8 +12,8 @@ pub enum ClipError {
 }
 
 impl Clip {
-    pub fn new(start: Time, data: Vec<f32>) -> Self {
-        Clip { start, data }
+    pub fn new(data: Vec<f32>) -> Self {
+        Clip { data }
     }
 
     // TODO: Session should probably own sample data, since this will load from disk every time.
@@ -34,10 +33,6 @@ impl Clip {
             .step_by(spec.channels as usize)
             .collect::<Vec<_>>();
 
-        Ok(Clip::new(start, samples))
-    }
-
-    pub fn end(&self) -> Time {
-        self.start + self.data.len() as Time
+        Ok(Clip::new(samples))
     }
 }

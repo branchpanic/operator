@@ -54,12 +54,12 @@ impl Session {
         (self.sample_rate as f32 * sec) as Time
     }
 
-    pub fn add_clip(&mut self, track: usize, clip: Clip) -> &Clip {
+    pub fn add_clip(&mut self, track: usize, time: usize, clip: Clip) -> &Clip {
         if track != 0 {
             todo!("Multiple track support");
         }
 
-        self.track.add_clip(clip)
+        self.track.add_clip(time, clip)
     }
 
     fn render_all(&self) -> Vec<f32> {
