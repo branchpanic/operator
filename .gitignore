@@ -1,2 +1,6 @@
 .idea/
 target/
+
+# Test files
+session/
+samples/

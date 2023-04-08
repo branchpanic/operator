@@ -50,6 +50,13 @@ impl Session {
         Ok(session)
     }
 
+    pub fn load_overwrite(&mut self, path: &String) -> Result<(), SessionError> {
+        let new = Self::load(path)?;
+        *self = new;
+
+        Ok(())
+    }
+
     pub fn sec_to_samples(&self, sec: f32) -> Time {
         (self.sample_rate as f32 * sec) as Time
     }
@@ -64,6 +71,12 @@ impl Session {
 
     fn render_all(&self) -> Vec<f32> {
         self.track.render_all()
+    }
+
+    pub fn len(&self) -> usize { self.track.len() }
+
+    pub fn render(&self, start_time: Time, buf: &mut [f32]) {
+        self.track.render(start_time, buf);
     }
 
     pub fn export(&self, path: &String) -> Result<(), SessionError> {

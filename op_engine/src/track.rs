@@ -112,6 +112,10 @@ impl Track {
         while let Some(inst) = self.next_clip(time) {
             time = inst.start();
 
+            if time > end_time {
+                break
+            }
+
             copy_clip_data(
                 &inst.clip,
                 buf,
@@ -119,11 +123,11 @@ impl Track {
                 time - start_time,
                 inst.len()
             );
-
-            if time > end_time {
-                break
-            }
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.last_clip().map(|c| c.end()).unwrap_or(0)
     }
 
     pub fn render_all(&self) -> Vec<f32> {

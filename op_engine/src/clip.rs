@@ -19,7 +19,7 @@ impl Clip {
     // TODO: Session should probably own sample data, since this will load from disk every time.
     // (However, this isn't actually on the critical path. Not many samples will be loaded directly
     // onto the timeline. Instead, they'll be played through instruments.)
-    pub fn from_file(start: Time, path: &String) -> Result<Self, ClipError> {
+    pub fn from_file(path: &String) -> Result<Self, ClipError> {
         let mut reader = hound::WavReader::open(path)?;
         let spec = reader.spec();
 
