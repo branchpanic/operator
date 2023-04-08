@@ -4,3 +4,4 @@ target/
 # Test files
 session/
 samples/
+*.wav

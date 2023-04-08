@@ -1,10 +1,12 @@
 mod track;
 mod clip;
 mod session;
+mod player;
 
 pub use track::Track;
 pub use clip::Clip;
 pub use session::Session;
+pub use player::Player;
 
 type Time = usize;  // in samples
 

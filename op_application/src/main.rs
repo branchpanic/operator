@@ -1,16 +1,15 @@
-mod player;
-
 use std::collections::HashMap;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use cpal::{FromSample, SizedSample, Stream};
+use cpal::{FromSample, SizedSample, Stream, StreamConfig};
+use cpal::BufferSize::Fixed;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use repl_rs::{Command, Convert, Parameter, Repl, Value};
-use op_engine::{Clip, Session};
-use crate::player::Player;
+use op_engine::{Clip, Session, Player};
 
 struct Context {
     session: Arc<Mutex<Session>>,
+    player: Arc<Mutex<Player>>,
     stream: Stream,
 }
 
@@ -56,11 +55,18 @@ fn pause(_args: HashMap<String, Value>, context: &mut Context) -> CommandResult 
     Ok(None)
 }
 
+fn stop(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
+    context.stream.pause()?;
+    let mut player = context.player.lock().unwrap();
+    player.seek(0);
+    Ok(None)
+}
+
 fn quit(_args: HashMap<String, Value>, _context: &mut Context) -> CommandResult {
     exit(0);
 }
 
-fn run<T>(device: &cpal::Device, config: &cpal::StreamConfig, mut player: Player) -> anyhow::Result<Stream>
+fn run<T>(device: &cpal::Device, config: &cpal::StreamConfig, player: Arc<Mutex<Player>>) -> anyhow::Result<Stream>
 where
     T: SizedSample + FromSample<f32>,
 {
@@ -70,7 +76,8 @@ where
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            player.write_next_block(data, channels)
+            let mut p = player.lock().unwrap();
+            p.write_next_block(data, channels)
         },
         err_fn,
         None,
@@ -84,30 +91,31 @@ fn main() -> anyhow::Result<()> {
 
     let host = cpal::default_host();
     let device = host.default_output_device().expect("output device required");
-    let config = device.default_output_config().expect("output config required");
+    let supported_config = device.default_output_config().expect("output config required");
+
+    let mut config: StreamConfig = supported_config.config();
+    config.buffer_size = Fixed(256);
+
     println!("Output config: {:?}", config);
 
-    let player = Player {
-        session: session.clone(),
-        last_sample: 0,
-    };
-
-    let stream = match config.sample_format() {
-        cpal::SampleFormat::I8 => run::<i8>(&device, &config.into(), player),
-        cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), player),
-        cpal::SampleFormat::I32 => run::<i32>(&device, &config.into(), player),
-        cpal::SampleFormat::I64 => run::<i64>(&device, &config.into(), player),
-        cpal::SampleFormat::U8 => run::<u8>(&device, &config.into(), player),
-        cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), player),
-        cpal::SampleFormat::U32 => run::<u32>(&device, &config.into(), player),
-        cpal::SampleFormat::U64 => run::<u64>(&device, &config.into(), player),
-        cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), player),
-        cpal::SampleFormat::F64 => run::<f64>(&device, &config.into(), player),
+    let player = Arc::new(Mutex::new(Player::new(session.clone())));
+    let stream = match supported_config.sample_format() {
+        cpal::SampleFormat::I8 => run::<i8>(&device, &config, player.clone()),
+        cpal::SampleFormat::I16 => run::<i16>(&device, &config, player.clone()),
+        cpal::SampleFormat::I32 => run::<i32>(&device, &config, player.clone()),
+        cpal::SampleFormat::I64 => run::<i64>(&device, &config, player.clone()),
+        cpal::SampleFormat::U8 => run::<u8>(&device, &config, player.clone()),
+        cpal::SampleFormat::U16 => run::<u16>(&device, &config, player.clone()),
+        cpal::SampleFormat::U32 => run::<u32>(&device, &config, player.clone()),
+        cpal::SampleFormat::U64 => run::<u64>(&device, &config, player.clone()),
+        cpal::SampleFormat::F32 => run::<f32>(&device, &config, player.clone()),
+        cpal::SampleFormat::F64 => run::<f64>(&device, &config, player.clone()),
         sample_format => panic!("unsupported sample format '{sample_format}'"),
     }.expect("run failed");
 
     let context = Context {
         session,
+        player,
         stream,
     };
 
@@ -134,6 +142,7 @@ fn main() -> anyhow::Result<()> {
         )
         .add_command(Command::new("play", play))
         .add_command(Command::new("pause", pause))
+        .add_command(Command::new("stop", stop))
         .add_command(Command::new("quit", quit));
 
     repl.run()?;

@@ -2,14 +2,25 @@
 
 use std::sync::{Arc, Mutex};
 
-use op_engine::Session;
+use crate::{Session, Time};
 
 pub struct Player {
-    pub session: Arc<Mutex<Session>>,
-    pub last_sample: usize,
+    session: Arc<Mutex<Session>>,
+    last_sample: Time,
 }
 
 impl Player {
+    pub fn new(session: Arc<Mutex<Session>>) -> Self {
+        Player {
+            session,
+            last_sample: 0
+        }
+    }
+
+    pub fn seek(&mut self, sample: Time) {
+        self.last_sample = sample;
+    }
+
     pub fn write_next_block<T>(&mut self, output: &mut [T], channels: usize)
         where
             T: cpal::Sample + cpal::FromSample<f32>,
