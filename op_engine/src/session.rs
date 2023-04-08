@@ -1,13 +1,13 @@
 use std::{fs, io};
 use std::path::Path;
 
-use crate::{Clip, Time, Track};
+use crate::{Clip, mix, Time, Track};
 use crate::session::SessionError::{LoadSessionError, SaveSessionError};
 
-#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Session {
-    sample_rate: i32,
-    track: Track,
+    pub sample_rate: u32,
+    tracks: Vec<Track>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -22,7 +22,7 @@ pub enum SessionError {
         column: usize,
     },
 
-    #[error("failed to serialize session data")]
+    #[error("failed to serialize session data: {message}")]
     SaveSessionError {
         message: String,
     },
@@ -30,9 +30,10 @@ pub enum SessionError {
 
 impl Session {
     pub fn new() -> Self {
-        let mut default = Session::default();
-        default.sample_rate = 44100;
-        default
+        Session {
+            sample_rate: 44100,
+            tracks: vec![Track::new(); 4],
+        }
     }
 
     pub fn load(path: &String) -> Result<Self, SessionError> {
@@ -62,21 +63,37 @@ impl Session {
     }
 
     pub fn add_clip(&mut self, track: usize, time: usize, clip: Clip) -> &Clip {
-        if track != 0 {
-            todo!("Multiple track support");
-        }
-
-        self.track.add_clip(time, clip)
+        debug_assert!(track < self.tracks.len());
+        self.tracks[track].add_clip(time, clip)
     }
 
     fn render_all(&self) -> Vec<f32> {
-        self.track.render_all()
+        if self.tracks.is_empty() {
+            return Vec::new()
+        }
+
+        let mut buf = vec![0.0f32; self.len()];
+        self.render(0, &mut buf);
+        buf
     }
 
-    pub fn len(&self) -> usize { self.track.len() }
+    pub fn len(&self) -> usize {
+        self.tracks.iter()
+            .map(|t| t.len())
+            .max()
+            .unwrap()
+    }
 
     pub fn render(&self, start_time: Time, buf: &mut [f32]) {
-        self.track.render(start_time, buf);
+        let rendered: Vec<Vec<f32>> = self.tracks.iter()
+            .map(|t| {
+                let mut track_buf = vec![0.0f32; buf.len()];
+                t.render(start_time, &mut track_buf);
+                track_buf
+            }).collect();
+
+        let sources: Vec<&[f32]> = rendered.iter().map(|v| &v[..]).collect();
+        mix(&sources, buf)
     }
 
     pub fn export(&self, path: &String) -> Result<(), SessionError> {

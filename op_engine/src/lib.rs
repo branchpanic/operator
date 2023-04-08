@@ -3,6 +3,7 @@ mod clip;
 mod session;
 mod player;
 
+use std::cmp::{max, min};
 pub use track::Track;
 pub use clip::Clip;
 pub use session::Session;
@@ -10,18 +11,18 @@ pub use player::Player;
 
 type Time = usize;  // in samples
 
-fn mix(sources: &[&[f32]], into: &mut [f32]) {
-    for i in 0..into.len() {
-        into[i] = 0.0;
+fn mix(sources: &[&[f32]], buf: &mut [f32]) {
+    for i in 0..buf.len() {
+        buf[i] = 0.0;
         for source in sources {
             if i >= source.len() {
                 continue;
             }
 
-            into[i] += source[i];
+            buf[i] += source[i];
         }
 
-        into[i] /= sources.len() as f32;
+        buf[i] = (buf[i] / sources.len() as f32).max(-1.0).min(1.0);
     }
 }
 

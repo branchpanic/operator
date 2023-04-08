@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
+
 use cpal::{FromSample, SizedSample, Stream, StreamConfig};
 use cpal::BufferSize::Fixed;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use repl_rs::{Command, Convert, Parameter, Repl, Value};
-use op_engine::{Clip, Session, Player};
+
+use op_engine::{Clip, Player, Session};
 
 struct Context {
     session: Arc<Mutex<Session>>,
@@ -32,9 +34,10 @@ fn save(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
 fn place(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
     let clip_path: String = args["clip_path"].convert()?;
     let pos_sec: f32 = args["pos"].convert()?;
+    let track: usize = args["track"].convert()?;
     let mut session = context.session.lock().unwrap();
     let pos_samples = session.sec_to_samples(pos_sec);
-    session.add_clip(0, pos_samples, Clip::from_file(&clip_path)?);
+    session.add_clip(track, pos_samples, Clip::from_file(&clip_path)?);
     Ok(None)
 }
 
@@ -66,9 +69,9 @@ fn quit(_args: HashMap<String, Value>, _context: &mut Context) -> CommandResult 
     exit(0);
 }
 
-fn run<T>(device: &cpal::Device, config: &cpal::StreamConfig, player: Arc<Mutex<Player>>) -> anyhow::Result<Stream>
-where
-    T: SizedSample + FromSample<f32>,
+fn run<T>(device: &cpal::Device, config: &StreamConfig, player: Arc<Mutex<Player>>) -> anyhow::Result<Stream>
+    where
+        T: SizedSample + FromSample<f32>,
 {
     let channels = config.channels as usize;
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
@@ -87,7 +90,7 @@ where
 }
 
 fn main() -> anyhow::Result<()> {
-    let session = Arc::new(Mutex::new(Session::new()));
+    let session = Session::new();
 
     let host = cpal::default_host();
     let device = host.default_output_device().expect("output device required");
@@ -98,6 +101,11 @@ fn main() -> anyhow::Result<()> {
 
     println!("Output config: {:?}", config);
 
+    if config.sample_rate.0 != session.sample_rate {
+        println!("Warning: playback sample rate does not match session sample rate (TODO)")
+    }
+
+    let session = Arc::new(Mutex::new(session));
     let player = Arc::new(Mutex::new(Player::new(session.clone())));
     let stream = match supported_config.sample_format() {
         cpal::SampleFormat::I8 => run::<i8>(&device, &config, player.clone()),
@@ -139,6 +147,9 @@ fn main() -> anyhow::Result<()> {
             Command::new("place", place)
                 .with_parameter(Parameter::new("clip_path").set_required(true)?)?
                 .with_parameter(Parameter::new("pos").set_required(true)?)?
+                .with_parameter(Parameter::new("track")
+                    .set_required(false)?
+                    .set_default("0")?)?
         )
         .add_command(Command::new("play", play))
         .add_command(Command::new("pause", pause))

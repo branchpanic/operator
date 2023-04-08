@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::clip::Clip;
 use crate::Time;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ClipInstance {
     time: Time,
     clip: Clip,
@@ -30,7 +30,7 @@ impl ClipInstance {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
     clips: Vec<ClipInstance>,
 }
