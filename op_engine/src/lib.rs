@@ -1,13 +1,15 @@
 mod track;
 mod clip;
-mod session;
+mod project;
 mod player;
+mod session;
 
 use std::cmp::{max, min};
 pub use track::Track;
 pub use clip::Clip;
-pub use session::Session;
+pub use project::Project;
 pub use player::Player;
+pub use session::Session;
 
 type Time = usize;  // in samples
 

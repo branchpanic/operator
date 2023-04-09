@@ -1,147 +1,122 @@
-use std::{fs, io};
-use std::path::Path;
+use std::sync::{Arc, Mutex};
 
-use crate::{Clip, mix, Time, Track};
-use crate::session::SessionError::{LoadSessionError, SaveSessionError};
+use cpal::StreamConfig;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-#[derive(serde::Serialize, serde::Deserialize)]
+use crate::{Player, Project, Time};
+
+/// A Session is a loaded Project plus a context for playing and recording audio.
 pub struct Session {
-    pub sample_rate: u32,
-    tracks: Vec<Track>,
+    pub project: Arc<Mutex<Project>>,
+
+    // TODO: Is having Player still useful when we have Session?
+    //   Having a `Player` and `Recorder` to separate the output and input concerns could be
+    //   helpful, but it could also complicate recording with monitoring. Figure out what the
+    //   simplest thing is when we get there.
+    // TODO: See if we can pass the session around instead of having a weak reference between
+    //   Project and Player.
+    player: Arc<Mutex<Player>>,
+    output_stream: cpal::Stream,
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum SessionError {
+    #[error("failed to build stream")]
+    BuildStreamFailed(#[from] cpal::BuildStreamError),
+
     #[error(transparent)]
-    IoError(#[from] io::Error),
+    PlayStreamFailed(#[from] cpal::PlayStreamError),
 
-    #[error("failed to deserialize session data: {message}")]
-    LoadSessionError {
-        message: String,
-        line: usize,
-        column: usize,
-    },
+    #[error(transparent)]
+    PauseStreamFailed(#[from] cpal::PauseStreamError),
+}
 
-    #[error("failed to serialize session data: {message}")]
-    SaveSessionError {
-        message: String,
-    },
+fn stream_error_callback(err: cpal::StreamError) {
+    eprintln!("an error occurred on stream: {}", err);
+}
+
+fn build_output_stream<T>(device: &cpal::Device, config: &StreamConfig, player: Arc<Mutex<Player>>) -> Result<cpal::Stream, SessionError>
+    where
+        T: cpal::SizedSample + cpal::FromSample<f32>,
+{
+    let channels = config.channels as usize;
+    let stream = device.build_output_stream(
+        config,
+        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+            let mut p = player.lock().unwrap();
+            p.write_next_block(data, channels)
+        },
+        stream_error_callback,
+        None,
+    )?;
+
+    Ok(stream)
 }
 
 impl Session {
-    pub fn new() -> Self {
-        Session {
-            sample_rate: 44100,
-            tracks: vec![Track::new(); 4],
-        }
-    }
+    pub fn empty_with_defaults() -> Result<Self, SessionError> {
+        let project = Arc::new(Mutex::new(Project::new()));
+        let player = Arc::new(Mutex::new(Player::new(project.clone())));
 
-    pub fn load(path: &String) -> Result<Self, SessionError> {
-        let path = Path::new(path);
-        let serialized_session = fs::read_to_string(path.join("session.json"))?;
-        let session: Session = serde_json::from_str(serialized_session.as_str())
-            .map_err(|e| {
-                LoadSessionError {
-                    message: e.to_string(),
-                    line: e.line(),
-                    column: e.column(),
-                }
-            })?;
+        // TODO: Hosts and devices will eventually need to be configurable.
+        let host = cpal::default_host();
+        let output_device = host.default_output_device().expect("output device required");
+
+        let output_supported_config = output_device.default_output_config()
+            .expect("default config for host-provided default output device must be valid");
+
+        // TODO: Validate buffer size
+        let buffer_size = cpal::BufferSize::Fixed(256);
+        let output_sample_format = output_supported_config.sample_format();
+        let mut output_config: cpal::StreamConfig = output_supported_config.into();
+        output_config.buffer_size = buffer_size.clone();
+
+        let output_stream;
+
+        {
+            use cpal::SampleFormat::*;
+            let player_ref = player.clone();
+            output_stream = match output_sample_format {
+                I8 => build_output_stream::<i8>(&output_device, &output_config, player_ref),
+                I16 => build_output_stream::<i16>(&output_device, &output_config, player_ref),
+                I32 => build_output_stream::<i32>(&output_device, &output_config, player_ref),
+                I64 => build_output_stream::<i64>(&output_device, &output_config, player_ref),
+                U8 => build_output_stream::<u8>(&output_device, &output_config, player_ref),
+                U16 => build_output_stream::<u16>(&output_device, &output_config, player_ref),
+                U32 => build_output_stream::<u32>(&output_device, &output_config, player_ref),
+                U64 => build_output_stream::<u64>(&output_device, &output_config, player_ref),
+                F32 => build_output_stream::<f32>(&output_device, &output_config, player_ref),
+                F64 => build_output_stream::<f64>(&output_device, &output_config, player_ref),
+                f => panic!("unsupported sample format '{f}'"),
+            }?;
+        }
+
+        output_stream.pause().expect("could not pause output stream");
+
+        println!("Session information:");
+        println!("  Output: {}\n    {:?}", output_device.name().unwrap_or("<error>".to_string()), output_config);
+
+        let session = Session {
+            project,
+            player,
+            output_stream,
+        };
 
         Ok(session)
     }
 
-    pub fn load_overwrite(&mut self, path: &String) -> Result<(), SessionError> {
-        let new = Self::load(path)?;
-        *self = new;
-
+    pub fn play(&mut self) -> Result<(), SessionError> {
+        self.output_stream.play()?;
         Ok(())
     }
 
-    pub fn sec_to_samples(&self, sec: f32) -> Time {
-        (self.sample_rate as f32 * sec) as Time
-    }
-
-    pub fn add_clip(&mut self, track: usize, time: usize, clip: Clip) -> &Clip {
-        debug_assert!(track < self.tracks.len());
-        self.tracks[track].add_clip(time, clip)
-    }
-
-    fn render_all(&self) -> Vec<f32> {
-        if self.tracks.is_empty() {
-            return Vec::new()
-        }
-
-        let mut buf = vec![0.0f32; self.len()];
-        self.render(0, &mut buf);
-        buf
-    }
-
-    pub fn len(&self) -> usize {
-        self.tracks.iter()
-            .map(|t| t.len())
-            .max()
-            .unwrap()
-    }
-
-    pub fn render(&self, start_time: Time, buf: &mut [f32]) {
-        let rendered: Vec<Vec<f32>> = self.tracks.iter()
-            .map(|t| {
-                let mut track_buf = vec![0.0f32; buf.len()];
-                t.render(start_time, &mut track_buf);
-                track_buf
-            }).collect();
-
-        let sources: Vec<&[f32]> = rendered.iter().map(|v| &v[..]).collect();
-        mix(&sources, buf)
-    }
-
-    pub fn export(&self, path: &String) -> Result<(), SessionError> {
-        const SPEC: hound::WavSpec = hound::WavSpec {
-            channels: 1,
-            sample_rate: 44100,
-            bits_per_sample: 16,
-            sample_format: hound::SampleFormat::Int,
-        };
-
-        let samples = self.render_all();
-        let mut writer = hound::WavWriter::create(path, SPEC)
-            .expect("predefined wav spec must be valid");
-
-        for sample in samples {
-            writer.write_sample((sample * i16::MAX as f32) as i16)
-                .map_err(|e| {
-                    match e {
-                        hound::Error::IoError(io_error) => SessionError::IoError(io_error),
-                        _ => panic!("sample calculation was incorrect"),
-                    }
-                })?;
-        }
-
-        writer.finalize()
-            .map_err(|e| {
-                match e {
-                    hound::Error::IoError(io_error) => SessionError::IoError(io_error),
-                    hound::Error::UnfinishedSample => panic!("unfinished sample at export"),
-                    _ => panic!("unexpected error"),
-                }
-            })?;
-
+    pub fn pause(&mut self) -> Result<(), SessionError> {
+        self.output_stream.pause()?;
         Ok(())
     }
 
-    pub fn save(&self, path: &String) -> Result<(), SessionError> {
-        let path = Path::new(path);
-        fs::create_dir_all(path)?;
-
-        let serialized = serde_json::to_string(self)
-            .map_err(|e| {
-                SaveSessionError {
-                    message: e.to_string()
-                }
-            })?;
-
-        fs::write(path.join("session.json"), serialized)?;
-        Ok(())
+    pub fn seek(&mut self, time: Time) {
+        let mut player = self.player.lock().unwrap();
+        player.seek(time);
     }
 }

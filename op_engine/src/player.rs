@@ -1,24 +1,22 @@
-// TODO: Some part of this belongs in the library, which part exactly is TBD.
-
 use std::sync::{Arc, Mutex};
 
-use crate::{Session, Time};
+use crate::{Project, Time};
 
 pub struct Player {
-    session: Arc<Mutex<Session>>,
-    last_sample: Time,
+    session: Arc<Mutex<Project>>,
+    time: Time,
 }
 
 impl Player {
-    pub fn new(session: Arc<Mutex<Session>>) -> Self {
+    pub fn new(project: Arc<Mutex<Project>>) -> Self {
         Player {
-            session,
-            last_sample: 0
+            session: project,
+            time: 0
         }
     }
 
-    pub fn seek(&mut self, sample: Time) {
-        self.last_sample = sample;
+    pub fn seek(&mut self, time: Time) {
+        self.time = time;
     }
 
     pub fn write_next_block<T>(&mut self, output: &mut [T], channels: usize)
@@ -33,10 +31,10 @@ impl Player {
         {
             let s = self.session.lock().unwrap();
 
-            s.render(self.last_sample, &mut next_block);
-            self.last_sample += buf_size;
-            if self.last_sample > s.len() {
-                self.last_sample = 0
+            s.render(self.time, &mut next_block);
+            self.time += buf_size;
+            if self.time > s.len() {
+                self.time = 0
             }
         }
 
