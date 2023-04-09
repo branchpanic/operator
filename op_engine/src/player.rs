@@ -1,17 +1,42 @@
+use std::f32::consts::{PI, TAU};
 use std::sync::{Arc, Mutex};
 
 use crate::{Project, Time};
 
+struct SimpleOsc {
+    phase: f32,
+}
+
+impl SimpleOsc {
+    fn new() -> Self { SimpleOsc { phase: 0.0 } }
+
+    fn sample(&mut self, sample_rate: u32, freq: f32) -> f32 {
+        self.phase = self.phase + 2.0 * PI * (freq / sample_rate as f32);
+
+        while self.phase > 2.0 * PI {
+            self.phase = self.phase - 2.0 * PI;
+        }
+
+        while self.phase < 0.0 {
+            self.phase = self.phase + 2.0 * PI;
+        }
+
+        self.phase.sin()
+    }
+}
+
 pub struct Player {
-    session: Arc<Mutex<Project>>,
+    project: Arc<Mutex<Project>>,
+    osc: SimpleOsc,
     time: Time,
 }
 
 impl Player {
     pub fn new(project: Arc<Mutex<Project>>) -> Self {
         Player {
-            session: project,
-            time: 0
+            project,
+            osc: SimpleOsc::new(),
+            time: 0,
         }
     }
 
@@ -29,12 +54,16 @@ impl Player {
         let mut next_block = vec![0f32; buf_size];
 
         {
-            let s = self.session.lock().unwrap();
-
-            s.render(self.time, &mut next_block);
+            let project = self.project.lock().unwrap();
+            project.render(self.time, &mut next_block);
             self.time += buf_size;
-            if self.time > s.len() {
+            if self.time > project.len() {
                 self.time = 0
+            }
+
+            for i in 0..buf_size {
+                next_block[i] = (next_block[i] + 0.1 * self.osc.sample(48000, 440.0)) / 2.0;
+                debug_assert!(-1.0 <= next_block[i] && next_block[i] <= 1.0);
             }
         }
 
