@@ -1,104 +1,139 @@
-use std::collections::HashMap;
-use std::process::exit;
-use std::sync::{Arc, Mutex};
+use std::ops::RangeInclusive;
+use eframe::Frame;
+use egui::{Context, Widget};
+use op_engine::{Clip, Session};
 
-use cpal::{FromSample, SizedSample, Stream, StreamConfig};
-use cpal::BufferSize::Fixed;
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use repl_rs::{Command, Convert, Parameter, Repl, Value};
+fn main() -> eframe::Result<()> {
+    let options = eframe::NativeOptions {
+        initial_window_size: Some(egui::Vec2::new(800.0, 600.0)),
+        ..Default::default()
+    };
 
-use op_engine::{Clip, Player, Project, Session};
+    eframe::run_native(
+        "op_application",
+        options,
+        Box::new(|_| Box::new(Application::new().unwrap())),
+    )
+}
 
-struct Context {
+struct Application {
     session: Session,
+    load_path: String,
+    load_track: usize,
+    load_time_sec: f32,
 }
 
-type CommandResult = anyhow::Result<Option<String>>;
-
-fn load(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
-    let path: String = args["path"].convert()?;
-    let mut project = context.session.project.lock().unwrap();
-    project.load_overwrite(&path)?;
-    Ok(None)
+impl Application {
+    fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            session: Session::empty_with_defaults()?,
+            load_path: "".to_string(),
+            load_track: 0,
+            load_time_sec: 0.0,
+        })
+    }
 }
 
-fn save(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
-    let path: String = args["path"].convert()?;
-    let session = context.session.project.lock().unwrap();
-    session.save(&path)?;
-    Ok(None)
-}
+impl eframe::App for Application {
+    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Load").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        let mut project = self.session.project.lock().unwrap();
+                        project.load_overwrite(&path.display().to_string()).unwrap();
+                    };
+                }
 
-fn place(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
-    let clip_path: String = args["clip_path"].convert()?;
-    let pos_sec: f32 = args["pos"].convert()?;
-    let track: usize = args["track"].convert()?;
-    let mut session = context.session.project.lock().unwrap();
-    let pos_samples = session.sec_to_samples(pos_sec);
-    session.add_clip(track, pos_samples, Clip::from_file(&clip_path)?);
-    Ok(None)
-}
+                if ui.button("Save").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().save_file() {
+                        let project = self.session.project.lock().unwrap();
+                        project.save(&path.display().to_string()).unwrap();
+                    };
+                }
 
-fn export(args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
-    let path: String = args["path"].convert()?;
-    let session = context.session.project.lock().unwrap();
-    session.export(&path)?;
-    Ok(None)
-}
+                if ui.button("Export").clicked() {
+                    let dialog = rfd::FileDialog::new()
+                        .add_filter("WAV audio", &["wav"]);
 
-fn play(_args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
-    context.session.play()?;
-    Ok(None)
-}
+                    if let Some(path) = dialog.save_file() {
+                        let project = self.session.project.lock().unwrap();
+                        project.export(&path.display().to_string()).unwrap();
+                    };
+                }
+            });
 
-fn pause(_args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
-    context.session.pause()?;
-    Ok(None)
-}
+            ui.horizontal(|ui| {
+                if ui.button("Play").clicked() {
+                    self.session.play().unwrap();
+                }
 
-fn stop(_args: HashMap<String, Value>, context: &mut Context) -> CommandResult {
-    context.session.pause()?;
-    context.session.seek(0);
-    Ok(None)
-}
+                if ui.button("Pause").clicked() {
+                    self.session.pause().unwrap();
+                }
 
-fn quit(_args: HashMap<String, Value>, _context: &mut Context) -> CommandResult {
-    exit(0);
-}
+                if ui.button("Stop").clicked() {
+                    self.session.pause().unwrap();
+                    self.session.seek(0);
+                }
+            });
 
-fn main() -> anyhow::Result<()> {
-    let session = Session::empty_with_defaults()?;
-    let context = Context { session };
+            ui.add_space(8.0);
 
-    let mut repl = Repl::new(context)
-        .with_name("op_application tester")
-        .add_command(
-            Command::new("load", load)
-                .with_parameter(Parameter::new("path").set_required(true)?)?
-        )
-        .add_command(
-            Command::new("save", save)
-                .with_parameter(Parameter::new("path").set_required(true)?)?
-        )
-        .add_command(
-            Command::new("export", export)
-                .with_parameter(Parameter::new("path").set_required(true)?)?
-        )
-        .add_command(
-            Command::new("place", place)
-                .with_parameter(Parameter::new("clip_path").set_required(true)?)?
-                .with_parameter(Parameter::new("pos").set_required(true)?)?
-                .with_parameter(Parameter::new("track")
-                    .set_required(false)?
-                    .set_default("0")?)?
-        )
-        .add_command(Command::new("play", play))
-        .add_command(Command::new("pause", pause))
-        .add_command(Command::new("stop", stop))
-        .add_command(Command::new("quit", quit))
-        .add_command(Command::new("exit", quit));
+            ui.heading("Add clip");
+            ui.horizontal(|ui| {
+                if ui.button("Open").clicked() {
+                    let dialog = rfd::FileDialog::new()
+                        .add_filter("WAV audio", &["wav"]);
 
-    repl.run()?;
+                    if let Some(path) = dialog.pick_file() {
+                        self.load_path = path.display().to_string();
+                    }
+                }
 
-    Ok(())
+                ui.text_edit_singleline(&mut self.load_path);
+
+                ui.label("Track:");
+                egui::DragValue::new(&mut self.load_track)
+                    .clamp_range(RangeInclusive::new(0, 4))
+                    .ui(ui);
+
+                ui.label("Start:");
+                egui::DragValue::new(&mut self.load_time_sec)
+                    .clamp_range(RangeInclusive::new(0, 100))
+                    .ui(ui);
+
+                if ui.button("Add").clicked() {
+                    let mut project = self.session.project.lock().unwrap();
+                    let sec = project.sec_to_samples(self.load_time_sec);
+                    match Clip::from_file(&self.load_path) {
+                        Ok(clip) => {
+                            project.add_clip(self.load_track, sec, clip);
+                        }
+                        Err(e) => {
+                            eprintln!("failed to load clip: {}", e);
+                        }
+                    }
+                }
+            });
+
+            ui.add_space(8.0);
+
+            egui::Grid::new("clips")
+                .min_col_width(25.0)
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.label("Track");
+                    ui.label("Start");
+                    ui.end_row();
+
+                    let project = self.session.project.lock().unwrap();
+                    for clip in project.iter_clips() {
+                        ui.label(format!("{}", clip.track));
+                        ui.label(format!("{}", clip.start));
+                        ui.end_row();
+                    }
+                });
+        });
+    }
 }

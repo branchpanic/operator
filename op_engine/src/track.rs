@@ -1,11 +1,12 @@
 use std::cmp::min;
+use std::slice::Iter;
 use serde::{Deserialize, Serialize};
 
 use crate::clip::Clip;
 use crate::Time;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ClipInstance {
+pub(crate) struct ClipInstance {
     time: Time,
     clip: Clip,
 }
@@ -139,6 +140,10 @@ impl Track {
         let mut buf = vec![0.0; end];
         self.render(0, buf.as_mut_slice());
         buf
+    }
+
+    pub(crate) fn iter_clips(&self) -> Iter<'_, ClipInstance> {
+        self.clips.iter()
     }
 }
 

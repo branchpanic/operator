@@ -3,11 +3,17 @@ use std::path::Path;
 
 use crate::{Clip, mix, Time, Track};
 use crate::project::ProjectError::{LoadProjectError, SaveProjectError};
+use crate::track::ClipInstance;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Project {
     pub sample_rate: u32,
     tracks: Vec<Track>,
+}
+
+pub struct ClipInfo {
+    pub track: usize,
+    pub start: Time,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -65,6 +71,17 @@ impl Project {
     pub fn add_clip(&mut self, track: usize, time: usize, clip: Clip) -> &Clip {
         debug_assert!(track < self.tracks.len());
         self.tracks[track].add_clip(time, clip)
+    }
+
+    pub fn iter_clips(&self) -> impl Iterator<Item = ClipInfo> + '_ {
+        self.tracks.iter()
+            .enumerate()
+            .flat_map(|(i, track)| {
+                track.iter_clips().map(move |c| ClipInfo {
+                    track: i,
+                    start: c.start(),
+                })
+            })
     }
 
     fn render_all(&self) -> Vec<f32> {
