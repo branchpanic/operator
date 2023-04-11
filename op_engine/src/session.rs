@@ -1,9 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use cpal::StreamConfig;
+use cpal::{BufferSize, StreamConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::{Player, Project, Time};
+use crate::player::PlayerError;
 
 /// A Session is a loaded Project plus a context for playing and recording audio.
 pub struct Session {
@@ -29,6 +30,9 @@ pub enum SessionError {
 
     #[error(transparent)]
     PauseStreamFailed(#[from] cpal::PauseStreamError),
+
+    #[error(transparent)]
+    PlayerError(#[from] PlayerError),
 }
 
 fn stream_error_callback(err: cpal::StreamError) {
@@ -56,7 +60,6 @@ fn build_output_stream<T>(device: &cpal::Device, config: &StreamConfig, player: 
 impl Session {
     pub fn empty_with_defaults() -> Result<Self, SessionError> {
         let project = Arc::new(Mutex::new(Project::new()));
-        let player = Arc::new(Mutex::new(Player::new(project.clone())));
 
         // TODO: Hosts and devices will eventually need to be configurable.
         let host = cpal::default_host();
@@ -65,12 +68,13 @@ impl Session {
         let output_supported_config = output_device.default_output_config()
             .expect("default config for host-provided default output device must be valid");
 
-        // TODO: Validate buffer size
-        let buffer_size = cpal::BufferSize::Fixed(256);
+        // TODO: Validate that buffer size is supported.
+        let buffer_size = BufferSize::Fixed(256);
         let output_sample_format = output_supported_config.sample_format();
-        let mut output_config: cpal::StreamConfig = output_supported_config.into();
+        let mut output_config: StreamConfig = output_supported_config.into();
         output_config.buffer_size = buffer_size.clone();
 
+        let player = Arc::new(Mutex::new(Player::new(project.clone(), output_config.clone())?));
         let output_stream;
 
         {
@@ -87,7 +91,7 @@ impl Session {
                 U64 => build_output_stream::<u64>(&output_device, &output_config, player_ref),
                 F32 => build_output_stream::<f32>(&output_device, &output_config, player_ref),
                 F64 => build_output_stream::<f64>(&output_device, &output_config, player_ref),
-                f => panic!("unsupported sample format '{f}'"),
+                f => panic!("unsupported sample format '{}'", f),
             }?;
         }
 
