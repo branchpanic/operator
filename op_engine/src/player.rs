@@ -1,35 +1,14 @@
-use std::f32::consts::PI;
 use std::sync::{Arc, Mutex};
 use cpal::{BufferSize, StreamConfig};
+use dasp::{signal, Signal};
+use dasp::signal::ConstHz;
 
 use crate::{Project, Time};
 use crate::player::PlayerError::InvalidBufferSize;
 
-struct SimpleOsc {
-    phase: f32,
-}
-
-impl SimpleOsc {
-    fn new() -> Self { SimpleOsc { phase: 0.0 } }
-
-    fn sample(&mut self, sample_rate: u32, freq: f32) -> f32 {
-        self.phase = self.phase + 2.0 * PI * (freq / sample_rate as f32);
-
-        while self.phase > 2.0 * PI {
-            self.phase = self.phase - 2.0 * PI;
-        }
-
-        while self.phase < 0.0 {
-            self.phase = self.phase + 2.0 * PI;
-        }
-
-        self.phase.sin()
-    }
-}
-
 pub struct Player {
     project: Arc<Mutex<Project>>,
-    osc: SimpleOsc,
+    osc: signal::Sine<ConstHz>,
     time: Time,
     config: StreamConfig,
     buffer: Vec<f32>,  // FIXME: Currently assuming mono
@@ -43,17 +22,14 @@ pub enum PlayerError {
 
 impl Player {
     pub fn new(project: Arc<Mutex<Project>>, config: StreamConfig) -> Result<Self, PlayerError> {
-        let buffer;
-
-        if let BufferSize::Fixed(frame_count) = config.buffer_size {
-            buffer = vec![0.0; frame_count as usize];
-        } else {
-            return Err(InvalidBufferSize(config.buffer_size));
-        }
+        let buffer = match config.buffer_size {
+            BufferSize::Fixed(frame_count) => vec![0.0; frame_count as usize],
+            _ => return Err(InvalidBufferSize(config.buffer_size)),
+        };
 
         Ok(Player {
             project,
-            osc: SimpleOsc::new(),
+            osc: signal::rate(config.sample_rate.0.into()).const_hz(440.0).sine(),
             time: 0,
             config,
             buffer,
@@ -79,12 +55,12 @@ impl Player {
             }
 
             for i in 0..self.buffer.len() {
-                self.buffer[i] = (self.buffer[i] + 0.1 * self.osc.sample(48000, 440.0)) / 2.0;
+                self.buffer[i] = (self.buffer[i] + 0.1 * self.osc.next() as f32) / 2.0;
                 debug_assert!(-1.0 <= self.buffer[i] && self.buffer[i] <= 1.0);
             }
 
             if self.config.sample_rate.0 != project.sample_rate {
-                todo!();
+                todo!("resample to output sample rate");
             }
         }
 
