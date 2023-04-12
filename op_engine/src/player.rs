@@ -31,10 +31,12 @@ impl Player {
         };
 
         Ok(Player {
+            osc: signal::rate({
+                let p = project.lock().unwrap();
+                p.sample_rate as f64
+            }).const_hz(440.0).sine(),
+
             project,
-            // TODO: Record generators at playback rate or project rate?
-            //   Probably playback, then downsample when recorded.
-            osc: signal::rate(44100.0).const_hz(440.0).sine(),
             time: 0,
             config,
             render_buf: buffer,
@@ -43,6 +45,19 @@ impl Player {
 
     pub fn seek(&mut self, time: Time) {
         self.time = time;
+    }
+
+    fn write_signal<T, U>(signal: &mut impl Signal<Frame=T>, output: &mut [U], channels: usize)
+        where
+            U: cpal::Sample + cpal::FromSample<T>
+    {
+        for frame in output.chunks_mut(channels) {
+            let value = U::from_sample(signal.next());
+
+            for sample in frame.iter_mut() {
+                *sample = value;
+            }
+        }
     }
 
     pub fn write_next_block<T>(&mut self, output: &mut [T], channels: usize)
@@ -73,30 +88,15 @@ impl Player {
             debug_assert!(-1.0 <= self.render_buf[i] && self.render_buf[i] <= 1.0);
         }
 
-        if src_sample_rate != dst_sample_rate {
-            let interpolator = Linear::new(self.render_buf[0], self.render_buf[1]);
-            let src_signal = signal::from_iter(self.render_buf[..src_samples].iter().cloned());
+        let mut src_signal = signal::from_iter(self.render_buf[..src_samples].iter().cloned());
 
-            // TODO: Deduplicate this block -- surely both dst_signals have some trait in common?
-            let mut dst_signal = src_signal.scale_hz(interpolator, src_samples_per_dst);
-
-            for frame in output.chunks_mut(channels) {
-                let value: T = T::from_sample(dst_signal.next());
-
-                for sample in frame.iter_mut() {
-                    *sample = value;
-                }
-            }
-        } else {
-            let mut dst_signal = signal::from_iter(self.render_buf[..src_samples].iter().cloned());
-
-            for frame in output.chunks_mut(channels) {
-                let value: T = T::from_sample(dst_signal.next());
-
-                for sample in frame.iter_mut() {
-                    *sample = value;
-                }
-            }
+        if src_sample_rate == dst_sample_rate {
+            Self::write_signal(&mut src_signal, output, channels);
+            return;
         }
+
+        let interpolator = Linear::new(self.render_buf[0], self.render_buf[1]);
+        let mut resampled = src_signal.scale_hz(interpolator, src_samples_per_dst);
+        Self::write_signal(&mut resampled, output, channels);
     }
 }
