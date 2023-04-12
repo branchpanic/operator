@@ -1,6 +1,8 @@
 use std::sync::{Arc, Mutex};
+
 use cpal::{BufferSize, StreamConfig};
 use dasp::{signal, Signal};
+use dasp::interpolate::linear::Linear;
 use dasp::signal::ConstHz;
 
 use crate::{Project, Time};
@@ -11,7 +13,8 @@ pub struct Player {
     osc: signal::Sine<ConstHz>,
     time: Time,
     config: StreamConfig,
-    buffer: Vec<f32>,  // FIXME: Currently assuming mono
+
+    render_buf: Vec<f32>,  // FIXME: Currently assuming mono
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -29,10 +32,12 @@ impl Player {
 
         Ok(Player {
             project,
-            osc: signal::rate(config.sample_rate.0.into()).const_hz(440.0).sine(),
+            // TODO: Record generators at playback rate or project rate?
+            //   Probably playback, then downsample when recorded.
+            osc: signal::rate(44100.0).const_hz(440.0).sine(),
             time: 0,
             config,
-            buffer,
+            render_buf: buffer,
         })
     }
 
@@ -44,35 +49,54 @@ impl Player {
         where
             T: cpal::Sample + cpal::FromSample<f32>,
     {
-        debug_assert_eq!(self.buffer.len(), output.len() / self.config.channels as usize);
+        let project = self.project.lock().unwrap();
 
-        {
-            let project = self.project.lock().unwrap();
-            project.render(self.time, &mut self.buffer);
-            self.time += self.buffer.len();
-            if self.time > project.len() {
-                self.time = 0
-            }
+        let dst_samples = output.len() / channels;
+        let src_sample_rate = project.sample_rate as f64;
+        let dst_sample_rate = self.config.sample_rate.0 as f64;
+        let src_samples_per_dst = src_sample_rate / dst_sample_rate;
+        let src_samples = (dst_samples as f64 * src_samples_per_dst) as usize;
 
-            for i in 0..self.buffer.len() {
-                self.buffer[i] = (self.buffer[i] + 0.1 * self.osc.next() as f32) / 2.0;
-                debug_assert!(-1.0 <= self.buffer[i] && self.buffer[i] <= 1.0);
-            }
-
-            if self.config.sample_rate.0 != project.sample_rate {
-                todo!("resample to output sample rate");
-            }
+        if self.render_buf.len() < src_samples {
+            eprintln!("increasing render buffer size from {} to {}", self.render_buf.len(), src_samples);
+            self.render_buf.resize(src_samples, 0.0);
         }
 
-        let mut i = 0;
-        for frame in output.chunks_mut(channels) {
-            let value: T = T::from_sample(self.buffer[i]);
+        project.render(self.time, &mut self.render_buf[..src_samples]);
+        self.time += src_samples;
+        if self.time > project.len() {
+            self.time = 0
+        }
 
-            for sample in frame.iter_mut() {
-                *sample = value;
+        for i in 0..src_samples {
+            self.render_buf[i] = (self.render_buf[i] + 0.1 * self.osc.next() as f32) / 2.0;
+            debug_assert!(-1.0 <= self.render_buf[i] && self.render_buf[i] <= 1.0);
+        }
+
+        if src_sample_rate != dst_sample_rate {
+            let interpolator = Linear::new(self.render_buf[0], self.render_buf[1]);
+            let src_signal = signal::from_iter(self.render_buf[..src_samples].iter().cloned());
+
+            // TODO: Deduplicate this block -- surely both dst_signals have some trait in common?
+            let mut dst_signal = src_signal.scale_hz(interpolator, src_samples_per_dst);
+
+            for frame in output.chunks_mut(channels) {
+                let value: T = T::from_sample(dst_signal.next());
+
+                for sample in frame.iter_mut() {
+                    *sample = value;
+                }
             }
+        } else {
+            let mut dst_signal = signal::from_iter(self.render_buf[..src_samples].iter().cloned());
 
-            i += 1;
+            for frame in output.chunks_mut(channels) {
+                let value: T = T::from_sample(dst_signal.next());
+
+                for sample in frame.iter_mut() {
+                    *sample = value;
+                }
+            }
         }
     }
 }

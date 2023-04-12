@@ -47,7 +47,7 @@ fn copy_clip_data(clip: &Clip,
                   max_copy: usize,
 ) -> usize {
     debug_assert!(clip_start < clip.data.len());
-    debug_assert!(buf_start < buf.len());
+    debug_assert!(buf_start <= buf.len());
 
     let buf_space = buf.len() - buf_start;
     let clip_space = clip.data.len() - clip_start;

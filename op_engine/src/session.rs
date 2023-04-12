@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use cpal::{BufferSize, StreamConfig};
+use cpal::{BufferSize, SampleRate, StreamConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::{Player, Project, Time};
