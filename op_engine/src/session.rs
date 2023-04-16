@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use cpal::{BufferSize, SampleRate, StreamConfig};
+use cpal::{BufferSize, StreamConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::{Player, Project, Time};
@@ -122,5 +122,15 @@ impl Session {
     pub fn seek(&mut self, time: Time) {
         let mut player = self.player.lock().unwrap();
         player.seek(time);
+    }
+
+    pub fn time(&self) -> Time {
+        let player = self.player.lock().unwrap();
+        player.time()
+    }
+
+    pub fn set_recording(&self, recording: bool) {
+        let mut player = self.player.lock().unwrap();
+        player.set_recording(recording);
     }
 }

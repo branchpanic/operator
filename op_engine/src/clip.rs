@@ -1,7 +1,6 @@
-use hound::{Sample, SampleFormat};
+use hound::SampleFormat;
 
-use crate::clip::ClipError::{ClipReadError, UnsupportedSampleFormat};
-use crate::Time;
+use crate::clip::ClipError::ClipReadError;
 
 /// Represents a chunk of single channel, f32 audio.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

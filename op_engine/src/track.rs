@@ -95,6 +95,10 @@ impl Track {
     pub fn render(&self, start_time: Time, buf: &mut [f32]) {
         buf.fill(0.0);
 
+        if start_time >= self.len() {
+            return;
+        }
+
         let mut time = start_time;
         let end_time = time + buf.len();
 

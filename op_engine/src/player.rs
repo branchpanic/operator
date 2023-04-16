@@ -1,3 +1,4 @@
+use std::mem::take;
 use std::sync::{Arc, Mutex};
 
 use cpal::{BufferSize, StreamConfig};
@@ -5,16 +6,19 @@ use dasp::{signal, Signal};
 use dasp::interpolate::linear::Linear;
 use dasp::signal::ConstHz;
 
-use crate::{Project, Time};
+use crate::{Clip, Project, Time};
 use crate::player::PlayerError::InvalidBufferSize;
 
 pub struct Player {
     project: Arc<Mutex<Project>>,
-    osc: signal::Sine<ConstHz>,
     time: Time,
     config: StreamConfig,
-
     render_buf: Vec<f32>,  // FIXME: Currently assuming mono
+
+    osc: signal::Sine<ConstHz>,
+    recording: bool,
+    record_start: Time,
+    record_buf: Vec<f32>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -25,8 +29,8 @@ pub enum PlayerError {
 
 impl Player {
     pub fn new(project: Arc<Mutex<Project>>, config: StreamConfig) -> Result<Self, PlayerError> {
-        let buffer = match config.buffer_size {
-            BufferSize::Fixed(frame_count) => vec![0.0; frame_count as usize],
+        let buf_size = match config.buffer_size {
+            BufferSize::Fixed(frame_count) => frame_count as usize,
             _ => return Err(InvalidBufferSize(config.buffer_size)),
         };
 
@@ -39,12 +43,40 @@ impl Player {
             project,
             time: 0,
             config,
-            render_buf: buffer,
+            render_buf: vec![0.0; buf_size],
+
+            recording: false,
+            record_start: 0,
+            record_buf: vec![],
         })
+    }
+
+    pub fn set_recording(&mut self, recording: bool) {
+        if self.recording == recording {
+            return;
+        }
+
+        self.recording = recording;
+
+        if !recording {
+            self.write_recorded_clip();
+        } else if recording {
+            self.record_start = self.time;
+            self.record_buf.clear();
+        }
+    }
+
+    fn write_recorded_clip(&mut self) {
+        let mut project = self.project.lock().unwrap();
+        project.add_clip(0, self.record_start, Clip::new(take(&mut self.record_buf)));
     }
 
     pub fn seek(&mut self, time: Time) {
         self.time = time;
+    }
+
+    pub fn time(&self) -> Time {
+        self.time
     }
 
     fn write_signal<T, U>(signal: &mut impl Signal<Frame=T>, output: &mut [U], channels: usize)
@@ -53,7 +85,6 @@ impl Player {
     {
         for frame in output.chunks_mut(channels) {
             let value = U::from_sample(signal.next());
-
             for sample in frame.iter_mut() {
                 *sample = value;
             }
@@ -79,13 +110,13 @@ impl Player {
 
         project.render(self.time, &mut self.render_buf[..src_samples]);
         self.time += src_samples;
-        if self.time > project.len() {
-            self.time = 0
-        }
 
-        for i in 0..src_samples {
-            self.render_buf[i] = (self.render_buf[i] + 0.1 * self.osc.next() as f32) / 2.0;
-            debug_assert!(-1.0 <= self.render_buf[i] && self.render_buf[i] <= 1.0);
+        if self.recording {
+            for i in 0..src_samples {
+                let sample = 0.1 * self.osc.next() as f32;
+                self.record_buf.push(sample);
+                self.render_buf[i] = (self.render_buf[i] + sample) / 2.0;
+            }
         }
 
         let mut src_signal = signal::from_iter(self.render_buf[..src_samples].iter().cloned());

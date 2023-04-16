@@ -3,7 +3,6 @@ use std::path::Path;
 
 use crate::{Clip, mix, Time, Track};
 use crate::project::ProjectError::{LoadProjectError, SaveProjectError};
-use crate::track::ClipInstance;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Project {
@@ -102,6 +101,11 @@ impl Project {
     }
 
     pub fn render(&self, start_time: Time, buf: &mut [f32]) {
+        if start_time >= self.len() {
+            buf.fill(0.0);
+            return;
+        }
+
         let rendered: Vec<Vec<f32>> = self.tracks.iter()
             .map(|t| {
                 let mut track_buf = vec![0.0f32; buf.len()];

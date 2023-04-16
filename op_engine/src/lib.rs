@@ -4,7 +4,6 @@ mod project;
 mod player;
 mod session;
 
-use std::cmp::{max, min};
 pub use track::Track;
 pub use clip::Clip;
 pub use project::Project;

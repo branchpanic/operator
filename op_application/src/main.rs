@@ -1,6 +1,8 @@
 use std::ops::RangeInclusive;
+
 use eframe::Frame;
 use egui::{Context, Widget};
+
 use op_engine::{Clip, Session};
 
 fn main() -> eframe::Result<()> {
@@ -21,6 +23,8 @@ struct Application {
     load_path: String,
     load_track: usize,
     load_time_sec: f32,
+    recording: bool,
+    playing: bool,
 }
 
 impl Application {
@@ -30,12 +34,14 @@ impl Application {
             load_path: "".to_string(),
             load_track: 0,
             load_time_sec: 0.0,
+            recording: false,
+            playing: false,
         })
     }
 }
 
 impl eframe::App for Application {
-    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Load").clicked() {
@@ -66,16 +72,28 @@ impl eframe::App for Application {
             ui.horizontal(|ui| {
                 if ui.button("Play").clicked() {
                     self.session.play().unwrap();
+                    self.playing = true;
                 }
 
                 if ui.button("Pause").clicked() {
                     self.session.pause().unwrap();
+                    self.playing = false;
                 }
 
                 if ui.button("Stop").clicked() {
                     self.session.pause().unwrap();
                     self.session.seek(0);
+
+                    self.recording = false;
+                    self.session.set_recording(false);
+                    self.playing = false;
                 }
+
+                if ui.toggle_value(&mut self.recording, "Record").changed() {
+                    self.session.set_recording(self.recording);
+                }
+
+                ui.label(format!("{}", self.session.time()));
             });
 
             ui.add_space(8.0);
@@ -135,5 +153,9 @@ impl eframe::App for Application {
                     }
                 });
         });
+
+        if self.playing {
+            ctx.request_repaint();
+        }
     }
 }
