@@ -2,21 +2,16 @@ use std::sync::{Arc, Mutex};
 
 use cpal::{BufferSize, StreamConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use crate::{Player, Time};
 
-use crate::{Player, Project, Time};
 use crate::player::PlayerError;
+use crate::project::Project;
 
 /// A Session is a loaded Project plus a context for playing and recording audio.
 pub struct Session {
     pub project: Arc<Mutex<Project>>,
-
-    // TODO: Is having Player still useful when we have Session?
-    //   Having a `Player` and `Recorder` to separate the output and input concerns could be
-    //   helpful, but it could also complicate recording with monitoring. Figure out what the
-    //   simplest thing is when we get there.
-    // TODO: See if we can pass the session around instead of having a weak reference between
-    //   Project and Player.
     player: Arc<Mutex<Player>>,
+
     output_stream: cpal::Stream,
 }
 

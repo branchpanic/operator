@@ -1,14 +1,16 @@
 mod track;
 mod clip;
-mod project;
+mod timeline;
 mod player;
 mod session;
+mod project;
 
 pub use track::Track;
 pub use clip::Clip;
-pub use project::Project;
+pub use timeline::Timeline;
 pub use player::Player;
 pub use session::Session;
+pub use project::Project;
 
 type Time = usize;  // in samples
 

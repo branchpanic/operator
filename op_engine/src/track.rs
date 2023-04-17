@@ -5,10 +5,11 @@ use serde::{Deserialize, Serialize};
 use crate::clip::Clip;
 use crate::Time;
 
+/// A ClipInstance is a clip with a defined starting time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct ClipInstance {
-    time: Time,
-    clip: Clip,
+pub struct ClipInstance {
+    pub time: Time,
+    pub clip: Clip,
 }
 
 impl ClipInstance {
@@ -31,6 +32,8 @@ impl ClipInstance {
     }
 }
 
+/// A Track is a sequence of clip instances. Clips may overlap, but only one clip is ever played
+/// at a time on a single track.
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
     clips: Vec<ClipInstance>,

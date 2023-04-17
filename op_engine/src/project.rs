@@ -1,19 +1,7 @@
 use std::{fs, io};
 use std::path::Path;
 
-use crate::{Clip, mix, Time, Track};
-use crate::project::ProjectError::{LoadProjectError, SaveProjectError};
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Project {
-    pub sample_rate: u32,
-    tracks: Vec<Track>,
-}
-
-pub struct ClipInfo {
-    pub track: usize,
-    pub start: Time,
-}
+use crate::{Time, Timeline};
 
 #[derive(thiserror::Error, Debug)]
 pub enum ProjectError {
@@ -33,20 +21,38 @@ pub enum ProjectError {
     },
 }
 
+/// Owns persistent project data. This is what is saved, loaded, and exported by the user. Its main
+/// component is a Timeline, but it also contains audio configuration.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Project {
+    pub sample_rate: u32,
+    pub timeline: Timeline,
+}
+
+const PROJECT_EXPORT_SPEC: hound::WavSpec = hound::WavSpec {
+    channels: 1,
+    sample_rate: 44100,
+    bits_per_sample: 16,
+    sample_format: hound::SampleFormat::Int,
+};
+
+const PROJECT_FILE_NAME: &str = "project.json";
+
 impl Project {
     pub fn new() -> Self {
-        Project {
+        Self {
             sample_rate: 44100,
-            tracks: vec![Track::new(); 4],
+            timeline: Timeline::new(),
         }
     }
 
+    /// Loads a new Project. The path should be a directory containing a project file.
     pub fn load(path: &String) -> Result<Self, ProjectError> {
         let path = Path::new(path);
-        let serialized_session = fs::read_to_string(path.join("project.json"))?;
+        let serialized_session = fs::read_to_string(path.join(PROJECT_FILE_NAME))?;
         let project: Project = serde_json::from_str(serialized_session.as_str())
             .map_err(|e| {
-                LoadProjectError {
+                ProjectError::LoadProjectError {
                     message: e.to_string(),
                     line: e.line(),
                     column: e.column(),
@@ -63,70 +69,9 @@ impl Project {
         Ok(())
     }
 
-    pub fn sec_to_samples(&self, sec: f32) -> Time {
-        (self.sample_rate as f32 * sec) as Time
-    }
-
-    pub fn add_clip(&mut self, track: usize, time: usize, clip: Clip) -> &Clip {
-        debug_assert!(track < self.tracks.len());
-        self.tracks[track].add_clip(time, clip)
-    }
-
-    pub fn iter_clips(&self) -> impl Iterator<Item = ClipInfo> + '_ {
-        self.tracks.iter()
-            .enumerate()
-            .flat_map(|(i, track)| {
-                track.iter_clips().map(move |c| ClipInfo {
-                    track: i,
-                    start: c.start(),
-                })
-            })
-    }
-
-    fn render_all(&self) -> Vec<f32> {
-        if self.tracks.is_empty() {
-            return Vec::new()
-        }
-
-        let mut buf = vec![0.0f32; self.len()];
-        self.render(0, &mut buf);
-        buf
-    }
-
-    pub fn len(&self) -> usize {
-        self.tracks.iter()
-            .map(|t| t.len())
-            .max()
-            .unwrap()
-    }
-
-    pub fn render(&self, start_time: Time, buf: &mut [f32]) {
-        if start_time >= self.len() {
-            buf.fill(0.0);
-            return;
-        }
-
-        let rendered: Vec<Vec<f32>> = self.tracks.iter()
-            .map(|t| {
-                let mut track_buf = vec![0.0f32; buf.len()];
-                t.render(start_time, &mut track_buf);
-                track_buf
-            }).collect();
-
-        let sources: Vec<&[f32]> = rendered.iter().map(|v| &v[..]).collect();
-        mix(&sources, buf)
-    }
-
-    pub fn export(&self, path: &String) -> Result<(), ProjectError> {
-        const SPEC: hound::WavSpec = hound::WavSpec {
-            channels: 1,
-            sample_rate: 44100,
-            bits_per_sample: 16,
-            sample_format: hound::SampleFormat::Int,
-        };
-
-        let samples = self.render_all();
-        let mut writer = hound::WavWriter::create(path, SPEC)
+    pub fn export_wav(&self, path: &String) -> Result<(), ProjectError> {
+        let samples = self.timeline.render_all();
+        let mut writer = hound::WavWriter::create(path, PROJECT_EXPORT_SPEC)
             .expect("predefined wav spec must be valid");
 
         for sample in samples {
@@ -157,12 +102,20 @@ impl Project {
 
         let serialized = serde_json::to_string(self)
             .map_err(|e| {
-                SaveProjectError {
+                ProjectError::SaveProjectError {
                     message: e.to_string()
                 }
             })?;
 
-        fs::write(path.join("project.json"), serialized)?;
+        fs::write(path.join(PROJECT_FILE_NAME), serialized)?;
         Ok(())
+    }
+
+    pub fn sec_to_samples(&self, sec: f32) -> Time {
+        (self.sample_rate as f32 * sec) as Time
+    }
+
+    pub fn samples_to_sec(&self, samples: Time) -> f32 {
+        samples as f32 / self.sample_rate as f32
     }
 }

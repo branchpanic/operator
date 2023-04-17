@@ -64,7 +64,7 @@ impl eframe::App for Application {
 
                     if let Some(path) = dialog.save_file() {
                         let project = self.session.project.lock().unwrap();
-                        project.export(&path.display().to_string()).unwrap();
+                        project.export_wav(&path.display().to_string()).unwrap();
                     };
                 }
             });
@@ -124,9 +124,9 @@ impl eframe::App for Application {
                 if ui.button("Add").clicked() {
                     let mut project = self.session.project.lock().unwrap();
                     let sec = project.sec_to_samples(self.load_time_sec);
-                    match Clip::from_file(&self.load_path) {
+                    match Clip::load_wav(&project, &self.load_path) {
                         Ok(clip) => {
-                            project.add_clip(self.load_track, sec, clip);
+                            project.timeline.tracks[self.load_track].add_clip(sec, clip);
                         }
                         Err(e) => {
                             eprintln!("failed to load clip: {}", e);
@@ -143,12 +143,14 @@ impl eframe::App for Application {
                 .show(ui, |ui| {
                     ui.label("Track");
                     ui.label("Start");
+                    ui.label("Length");
                     ui.end_row();
 
                     let project = self.session.project.lock().unwrap();
-                    for clip in project.iter_clips() {
-                        ui.label(format!("{}", clip.track));
-                        ui.label(format!("{}", clip.start));
+                    for (track, inst) in project.timeline.iter_clips() {
+                        ui.label(format!("{}", track));
+                        ui.label(format!("{}", inst.start()));
+                        ui.label(format!("{}", inst.len()));
                         ui.end_row();
                     }
                 });
