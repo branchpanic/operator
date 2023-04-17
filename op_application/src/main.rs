@@ -1,9 +1,12 @@
+mod keyboard;
+
 use std::ops::RangeInclusive;
 
 use eframe::Frame;
 use egui::{Context, Widget};
 
 use op_engine::{Clip, Session};
+use crate::keyboard::Keyboard;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
@@ -25,6 +28,7 @@ struct Application {
     load_time_sec: f32,
     recording: bool,
     playing: bool,
+    keyboard: Keyboard,
 }
 
 impl Application {
@@ -36,12 +40,18 @@ impl Application {
             load_time_sec: 0.0,
             recording: false,
             playing: false,
+            keyboard: Keyboard::new(),
         })
     }
 }
 
 impl eframe::App for Application {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+        ctx.input(|i| {
+            let result = self.keyboard.update(&i.keys_down);
+            result.into_iter().for_each(|m| self.session.handle(m));
+        });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Load").clicked() {

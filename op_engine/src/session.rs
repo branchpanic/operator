@@ -128,4 +128,9 @@ impl Session {
         let mut player = self.player.lock().unwrap();
         player.set_recording(recording);
     }
+
+    pub fn handle(&self, msg: midly::MidiMessage) {
+        let mut project = self.project.lock().unwrap();
+        project.generator.handle(msg);
+    }
 }
