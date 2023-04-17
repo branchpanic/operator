@@ -2,6 +2,7 @@ use std::{fs, io};
 use std::path::Path;
 
 use crate::{Time, Timeline};
+use crate::generator::sine::SineGenerator;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ProjectError {
@@ -27,6 +28,9 @@ pub enum ProjectError {
 pub struct Project {
     pub sample_rate: u32,
     pub timeline: Timeline,
+
+    #[serde(skip)]
+    pub generator: SineGenerator,
 }
 
 const PROJECT_EXPORT_SPEC: hound::WavSpec = hound::WavSpec {
@@ -43,6 +47,7 @@ impl Project {
         Self {
             sample_rate: 44100,
             timeline: Timeline::new(),
+            generator: SineGenerator::new(44100)
         }
     }
 
@@ -50,7 +55,7 @@ impl Project {
     pub fn load(path: &String) -> Result<Self, ProjectError> {
         let path = Path::new(path);
         let serialized_session = fs::read_to_string(path.join(PROJECT_FILE_NAME))?;
-        let project: Project = serde_json::from_str(serialized_session.as_str())
+        let mut project: Project = serde_json::from_str(serialized_session.as_str())
             .map_err(|e| {
                 ProjectError::LoadProjectError {
                     message: e.to_string(),
@@ -58,6 +63,8 @@ impl Project {
                     column: e.column(),
                 }
             })?;
+
+        project.generator = SineGenerator::new(project.sample_rate);
 
         Ok(project)
     }

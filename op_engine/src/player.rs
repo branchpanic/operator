@@ -4,10 +4,9 @@ use std::sync::{Arc, Mutex};
 use cpal::{BufferSize, StreamConfig};
 use dasp::{signal, Signal};
 use dasp::interpolate::linear::Linear;
-use dasp::signal::ConstHz;
 
 use crate::{Clip, Project, Time};
-use crate::player::PlayerError::InvalidBufferSize;
+use crate::generator::Generator;
 
 pub struct Player {
     project: Arc<Mutex<Project>>,
@@ -15,7 +14,6 @@ pub struct Player {
     config: StreamConfig,
     render_buf: Vec<f32>,  // FIXME: Currently assuming mono
 
-    osc: signal::Sine<ConstHz>,
     recording: bool,
     record_start: Time,
     record_buf: Vec<f32>,
@@ -31,15 +29,10 @@ impl Player {
     pub fn new(project: Arc<Mutex<Project>>, config: StreamConfig) -> Result<Self, PlayerError> {
         let buf_size = match config.buffer_size {
             BufferSize::Fixed(frame_count) => frame_count as usize,
-            _ => return Err(InvalidBufferSize(config.buffer_size)),
+            _ => return Err(PlayerError::InvalidBufferSize(config.buffer_size)),
         };
 
         Ok(Player {
-            osc: signal::rate({
-                let p = project.lock().unwrap();
-                p.sample_rate as f64
-            }).const_hz(440.0).sine(),
-
             project,
             time: 0,
             config,
@@ -96,7 +89,7 @@ impl Player {
         where
             T: cpal::Sample + cpal::FromSample<f32>,
     {
-        let project = self.project.lock().unwrap();
+        let mut project = self.project.lock().unwrap();
 
         let dst_samples = output.len() / channels;
         let src_sample_rate = project.sample_rate as f64;
@@ -112,11 +105,12 @@ impl Player {
         project.timeline.render(self.time, &mut self.render_buf[..src_samples]);
         self.time += src_samples;
 
-        if self.recording {
-            for i in 0..src_samples {
-                let sample = 0.1 * self.osc.next() as f32;
+        for i in 0..src_samples {
+            let sample = 0.1 * project.generator.next();
+            self.render_buf[i] = (self.render_buf[i] + sample) / 2.0;
+
+            if self.recording {
                 self.record_buf.push(sample);
-                self.render_buf[i] = (self.render_buf[i] + sample) / 2.0;
             }
         }
 

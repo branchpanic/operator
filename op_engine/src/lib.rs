@@ -4,6 +4,7 @@ mod timeline;
 mod player;
 mod session;
 mod project;
+mod generator;
 
 pub use track::Track;
 pub use clip::Clip;
