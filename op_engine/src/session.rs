@@ -90,7 +90,7 @@ impl Session {
             }?;
         }
 
-        output_stream.pause().expect("could not pause output stream");
+        output_stream.play().expect("could not start output stream");
 
         println!("Session information:");
         println!("  Output: {}\n    {:?}", output_device.name().unwrap_or("<error>".to_string()), output_config);
@@ -105,12 +105,14 @@ impl Session {
     }
 
     pub fn play(&mut self) -> Result<(), SessionError> {
-        self.output_stream.play()?;
+        let mut player = self.player.lock().unwrap();
+        player.playing_project = true;
         Ok(())
     }
 
     pub fn pause(&mut self) -> Result<(), SessionError> {
-        self.output_stream.pause()?;
+        let mut player = self.player.lock().unwrap();
+        player.playing_project = false;
         Ok(())
     }
 
@@ -124,9 +126,9 @@ impl Session {
         player.time()
     }
 
-    pub fn set_recording(&self, recording: bool) {
+    pub fn set_recording(&self, recording: bool, record_track: usize) {
         let mut player = self.player.lock().unwrap();
-        player.set_recording(recording);
+        player.set_recording(recording, record_track);
     }
 
     pub fn handle(&self, msg: midly::MidiMessage) {

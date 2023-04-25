@@ -32,6 +32,7 @@ struct Application {
     load_track: usize,
     load_time_sec: f32,
     recording: bool,
+    record_track: usize,
     playing: bool,
     keyboard: Keyboard,
 }
@@ -54,6 +55,7 @@ impl Application {
             load_track: 0,
             load_time_sec: 0.0,
             recording: false,
+            record_track: 0,
             playing: false,
             keyboard: Keyboard::new(),
         })
@@ -110,14 +112,22 @@ impl eframe::App for Application {
                     self.session.seek(0);
 
                     self.recording = false;
-                    self.session.set_recording(false);
+                    self.session.set_recording(false, self.record_track);
                     self.playing = false;
                 }
 
-                if ui.toggle_value(&mut self.recording, "Record").changed() {
-                    self.session.set_recording(self.recording);
+                let record_toggle = ui.toggle_value(&mut self.recording, "Record");
+
+                ui.label("Track:");
+                egui::DragValue::new(&mut self.record_track)
+                    .clamp_range(RangeInclusive::new(0, 3))
+                    .ui(ui);
+
+                if record_toggle.changed() {
+                    self.session.set_recording(self.recording, self.record_track);
                 }
 
+                ui.label("Sample:");
                 ui.label(format!("{}", self.session.time()));
             });
 
@@ -138,7 +148,7 @@ impl eframe::App for Application {
 
                 ui.label("Track:");
                 egui::DragValue::new(&mut self.load_track)
-                    .clamp_range(RangeInclusive::new(0, 4))
+                    .clamp_range(RangeInclusive::new(0, 3))
                     .ui(ui);
 
                 ui.label("Start:");
