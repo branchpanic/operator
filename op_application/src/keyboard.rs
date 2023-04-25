@@ -1,10 +1,13 @@
 use std::collections::HashSet;
 use egui::Key;
 
-const SCALE: [Key; 12] = {
+const SCALE: [Key; 13] = {
     use egui::Key::*;
-    [Z, S, X, D, C, V, G, B, H, N, J, M]
+    [A, W, S, E, D, F, T, G, Y, H, U, J, K]
 };
+
+const OCTAVE_UP: Key = Key::X;
+const OCTAVE_DOWN: Key = Key::Z;
 
 pub struct Keyboard {
     base: u8,
@@ -28,7 +31,17 @@ impl Keyboard {
     }
 
     pub fn update(&mut self, keys_down: &HashSet<Key>) -> Vec<midly::MidiMessage> {
-        let notes_on = keys_down.difference(&self.keys_held)
+        let just_pressed = keys_down.difference(&self.keys_held);
+
+        for key in just_pressed.clone() {
+            if key == &OCTAVE_UP {
+                self.base += 12;
+            } else if key == &OCTAVE_DOWN {
+                self.base -= 12;
+            }
+        }
+
+        let notes_on = just_pressed
             .filter_map(|k| self.key_to_note(k))
             .map(|note| midly::MidiMessage::NoteOn {
                 key: note,

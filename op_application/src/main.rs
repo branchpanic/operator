@@ -1,6 +1,6 @@
 mod keyboard;
 mod faust;
-mod engines;
+mod sine;
 
 use std::ops::RangeInclusive;
 
@@ -9,7 +9,7 @@ use egui::{Context, Widget};
 
 use op_engine::{Clip, Session};
 use op_engine::generator::Generator;
-use crate::engines::Sine;
+use crate::sine::Sine;
 use crate::faust::{FaustDsp, FaustGenerator};
 use crate::keyboard::Keyboard;
 
