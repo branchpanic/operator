@@ -2,6 +2,7 @@ use std::{fs, io};
 use std::path::Path;
 
 use crate::{Time, Timeline};
+use crate::generator::Generator;
 use crate::generator::sine::SineGenerator;
 
 #[derive(thiserror::Error, Debug)]
@@ -29,8 +30,8 @@ pub struct Project {
     pub sample_rate: u32,
     pub timeline: Timeline,
 
-    #[serde(skip)]
-    pub generator: SineGenerator,
+    #[serde(skip, default="Project::default_generator")]
+    pub generator: Box<dyn Generator>,
 }
 
 const PROJECT_EXPORT_SPEC: hound::WavSpec = hound::WavSpec {
@@ -43,11 +44,15 @@ const PROJECT_EXPORT_SPEC: hound::WavSpec = hound::WavSpec {
 const PROJECT_FILE_NAME: &str = "project.json";
 
 impl Project {
+    fn default_generator() -> Box<dyn Generator> {
+        Box::new(SineGenerator::new(44100))
+    }
+
     pub fn new() -> Self {
         Self {
             sample_rate: 44100,
             timeline: Timeline::new(),
-            generator: SineGenerator::new(44100)
+            generator: Box::new(SineGenerator::new(44100)),
         }
     }
 
@@ -64,7 +69,7 @@ impl Project {
                 }
             })?;
 
-        project.generator = SineGenerator::new(project.sample_rate);
+        project.generator = Box::new(SineGenerator::new(project.sample_rate));
 
         Ok(project)
     }

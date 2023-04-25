@@ -107,7 +107,8 @@ impl Player {
 
         for i in 0..src_samples {
             let sample = 0.1 * project.generator.next();
-            self.render_buf[i] = (self.render_buf[i] + sample) / 2.0;
+            self.render_buf[i] += sample;
+            self.render_buf[i] = self.render_buf[i].clamp(-1.0, 1.0);
 
             if self.recording {
                 self.record_buf.push(sample);

@@ -21,22 +21,6 @@ impl SineGenerator {
             on: false,
         }
     }
-
-    pub fn handle(&mut self, msg: midly::MidiMessage) {
-        match msg {
-            midly::MidiMessage::NoteOn { key, .. } => {
-                self.note = key.into();
-                self.on = true;
-            }
-            midly::MidiMessage::NoteOff { key, ..} => {
-                let key: u8 = key.into();
-                if self.note == key {
-                    self.on = false;
-                }
-            },
-            _ => ()
-        }
-    }
 }
 
 impl Default for SineGenerator {
@@ -51,7 +35,7 @@ impl Generator for SineGenerator {
             return 0.0;
         }
 
-        let freq=  midi_note_to_hz(self.note) as f32 / self.sample_rate as f32;
+        let freq = midi_note_to_hz(self.note) as f32 / self.sample_rate as f32;
         self.phase += 2.0 * PI * freq;
 
         if self.phase > 2.0 * PI {
@@ -63,5 +47,21 @@ impl Generator for SineGenerator {
         }
 
         self.phase.sin()
+    }
+
+    fn handle(&mut self, msg: midly::MidiMessage) {
+        match msg {
+            midly::MidiMessage::NoteOn { key, .. } => {
+                self.note = key.into();
+                self.on = true;
+            }
+            midly::MidiMessage::NoteOff { key, .. } => {
+                let key: u8 = key.into();
+                if self.note == key {
+                    self.on = false;
+                }
+            }
+            _ => ()
+        }
     }
 }

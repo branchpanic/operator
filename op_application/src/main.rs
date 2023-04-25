@@ -1,4 +1,6 @@
 mod keyboard;
+mod faust;
+mod engines;
 
 use std::ops::RangeInclusive;
 
@@ -6,6 +8,9 @@ use eframe::Frame;
 use egui::{Context, Widget};
 
 use op_engine::{Clip, Session};
+use op_engine::generator::Generator;
+use crate::engines::Sine;
+use crate::faust::{FaustDsp, FaustGenerator};
 use crate::keyboard::Keyboard;
 
 fn main() -> eframe::Result<()> {
@@ -33,8 +38,18 @@ struct Application {
 
 impl Application {
     fn new() -> anyhow::Result<Self> {
+        let mut session = Session::empty_with_defaults()?;
+
+        {
+            let mut project = session.project.lock().unwrap();
+            let mut sine = Sine::new();
+            sine.init(project.sample_rate as i32);
+            let mut generator = FaustGenerator::new(Box::new(sine));
+            project.generator = Box::new(generator);
+        }
+
         Ok(Self {
-            session: Session::empty_with_defaults()?,
+            session,
             load_path: "".to_string(),
             load_track: 0,
             load_time_sec: 0.0,

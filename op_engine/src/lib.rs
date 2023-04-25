@@ -4,7 +4,7 @@ mod timeline;
 mod player;
 mod session;
 mod project;
-mod generator;
+pub mod generator;
 
 pub use track::Track;
 pub use clip::Clip;
@@ -26,7 +26,7 @@ fn mix(sources: &[&[f32]], buf: &mut [f32]) {
             buf[i] += source[i];
         }
 
-        buf[i] = (buf[i] / sources.len() as f32).max(-1.0).min(1.0);
+        buf[i] = buf[i].max(-1.0).min(1.0);
     }
 }
 
@@ -42,6 +42,6 @@ mod tests {
         let c4 = [1.0f32];
         let mut result = [0f32; 5];
         mix(&[&c1, &c2, &c3, &c4], &mut result);
-        assert_eq!(result, [1.0f32, 0.75f32, 0.5f32, 0.25f32, 0.0f32]);
+        assert_eq!(result, [4.0, 3.0, 2.0, 1.0, 0.0]);
     }
 }
