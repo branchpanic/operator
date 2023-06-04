@@ -8,8 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.70"
 cpal = "0.15.2"
-eframe = "0.21.3"
-egui = "0.21.0"
+iced = {version = "0.9.0", features = ["smol"]}
 midly = "0.5.3"
 op_engine = { path = "../op_engine"}
 rfd = "0.11.3"
