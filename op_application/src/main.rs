@@ -2,14 +2,18 @@ mod keyboard;
 mod faust;
 mod sine;
 
+use std::collections::HashSet;
 use std::time::Duration;
-use iced::{Application, theme, time};
-use iced::{Command, Element, executor, Sandbox, Settings, Subscription};
-use iced::widget::{button, checkbox, row, text};
-use op_engine::{Clip, Session};
+use iced::{Alignment, Application, Event, Length, subscription, theme, Theme, time, window};
+use iced::{Command, Element, executor, Settings, Subscription};
+use iced::alignment::{Horizontal, Vertical};
+use iced::keyboard::Event::{KeyPressed, KeyReleased};
+use iced::keyboard::KeyCode;
+use iced::widget::{button, checkbox, container, column, row, text};
+use op_engine::Session;
 use crate::sine::Sine;
 use crate::faust::{FaustDsp, FaustGenerator};
-// use crate::keyboard::Keyboard;
+use crate::keyboard::Keyboard;
 
 pub fn main() -> iced::Result {
     OpApplication::run(Settings::default())
@@ -19,8 +23,10 @@ struct OpApplication {
     session: Session,
     playing: bool,
     recording: bool,
-    record_track: usize,
+    armed_track: usize,
     time: usize,
+    keyboard: Keyboard,
+    held_keys: HashSet<KeyCode>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,8 +34,12 @@ enum OpMessage {
     Play,
     Pause,
     Stop,
-    Tick,
+    PlaybackTick,
     SetRecording(bool),
+    InputEvent(Event),
+    Save,
+    Load,
+    Export,
 }
 
 impl Application for OpApplication {
@@ -39,13 +49,25 @@ impl Application for OpApplication {
     type Flags = ();
 
     fn new(_: Self::Flags) -> (Self, Command<Self::Message>) {
+        let session = Session::empty_with_defaults().unwrap();
+
+        {
+            let mut project = session.project.lock().unwrap();
+            let mut sine = Sine::new();
+            sine.init(project.sample_rate as i32);
+            let generator = FaustGenerator::new(Box::new(sine));
+            project.generator = Box::new(generator);
+        }
+
         (
             Self {
-                session: Session::empty_with_defaults().unwrap(),
+                session,
                 playing: false,
                 recording: false,
-                record_track: 0,
+                armed_track: 0,
                 time: 0,
+                keyboard: Keyboard::new(),
+                held_keys: HashSet::new(),
             },
             Command::none()
         )
@@ -72,29 +94,50 @@ impl Application for OpApplication {
             }
 
             OpMessage::Stop => {
-                if self.playing {
-                    self.session.pause().unwrap();
-                    self.session.set_recording(false, self.record_track);
-                }
-
-                self.playing = false;
+                self.session.pause().unwrap();
                 self.session.seek(0);
+                self.recording = false;
+                self.session.set_recording(false, self.armed_track);
+                self.playing = false;
             }
 
-            OpMessage::Tick => {
+            OpMessage::PlaybackTick => {
                 self.time = self.session.time();
             }
 
             OpMessage::SetRecording(recording) => {
                 self.recording = recording;
+                self.session.set_recording(true, self.armed_track);
             }
+
+            OpMessage::InputEvent(event) => {
+                match event {
+                    Event::Keyboard(keyboard_event) => {
+                        match keyboard_event {
+                            KeyPressed { key_code: c, .. } => { self.held_keys.insert(c); }
+                            KeyReleased { key_code: c, .. } => { self.held_keys.remove(&c); }
+                            _ => {}
+                        };
+
+                        for msg in self.keyboard.update(&self.held_keys) {
+                            self.session.handle(msg);
+                        }
+                    }
+                    Event::Window(window::Event::CloseRequested) => { return window::close(); }
+                    _ => {}
+                };
+            }
+
+            OpMessage::Save => {}
+            OpMessage::Load => {}
+            OpMessage::Export => {}
         };
 
         Command::none()
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        row![
+        let transport_controls = row![
             if !self.playing {
                 button("Play").on_press(OpMessage::Play)
             } else {
@@ -102,16 +145,56 @@ impl Application for OpApplication {
             },
             button("Stop").on_press(OpMessage::Stop),
             checkbox("Record", self.recording, OpMessage::SetRecording),
-            text(self.time),
-        ].spacing(10).into()
+        ].spacing(4);
+
+        let status_display = row![
+            text(format!("{}", self.time))
+                .width(Length::Fill)
+                .horizontal_alignment(Horizontal::Center)
+                .vertical_alignment(Vertical::Center),
+        ];
+
+        let project_controls = container(row![
+            button("Load").on_press(OpMessage::Load),
+            button("Save").on_press(OpMessage::Save),
+            button("Export").on_press(OpMessage::Export),
+        ].spacing(4)).align_x(Horizontal::Right);
+
+        let top_bar = container(row![
+            transport_controls.align_items(Alignment::Center).width(Length::FillPortion(1)),
+            status_display.align_items(Alignment::Center).width(Length::FillPortion(2)),
+            project_controls.width(Length::FillPortion(1)),
+        ])
+            .padding(8)
+            .width(Length::Fill);
+
+        let timeline = container(column![
+            text("Hello!").horizontal_alignment(Horizontal::Center).vertical_alignment(Vertical::Center),
+        ])
+            .center_x()
+            .center_y()
+            .width(Length::Fill)
+            .height(Length::Fill);
+
+        column![
+            top_bar,
+            timeline,
+        ].into()
+    }
+
+    fn theme(&self) -> Self::Theme {
+        Theme::Dark
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        if self.playing {
-            time::every(Duration::from_millis(10)).map(|_| OpMessage::Tick)
-        } else {
-            Subscription::none()
-        }
+        Subscription::batch([
+            if self.playing {
+                time::every(Duration::from_millis(10)).map(|_| OpMessage::PlaybackTick)
+            } else {
+                Subscription::none()
+            },
+            subscription::events().map(OpMessage::InputEvent),
+        ])
     }
 }
 

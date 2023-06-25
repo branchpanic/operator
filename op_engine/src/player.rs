@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::mem::take;
 use std::sync::{Arc, Mutex};
 
@@ -108,14 +109,14 @@ impl Player {
             self.output_buf.resize(src_samples, 0.0);
         }
 
+        self.output_buf.fill(0.0);
+
         if self.playing_project {
             project.timeline.render(self.time, &mut self.output_buf[..src_samples]);
             self.time += src_samples;
             if self.time > project.timeline.len() && !self.recording {
                 self.time = 0;
             }
-        } else {
-            self.output_buf.fill(0.0);
         }
 
         for i in 0..src_samples {
@@ -132,11 +133,10 @@ impl Player {
 
         if src_sample_rate == dst_sample_rate {
             Self::write_signal(&mut src_signal, output, channels);
-            return;
+        } else {
+            let interpolator = Linear::new(self.output_buf[0], self.output_buf[1]);
+            let mut resampled = src_signal.scale_hz(interpolator, src_samples_per_dst);
+            Self::write_signal(&mut resampled, output, channels);
         }
-
-        let interpolator = Linear::new(self.output_buf[0], self.output_buf[1]);
-        let mut resampled = src_signal.scale_hz(interpolator, src_samples_per_dst);
-        Self::write_signal(&mut resampled, output, channels);
     }
 }

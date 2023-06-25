@@ -1,6 +1,7 @@
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 
-use cpal::{BufferSize, StreamConfig};
+use cpal::{BufferSize, ChannelCount, StreamConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crate::{Player, Time};
 
@@ -36,7 +37,7 @@ fn stream_error_callback(err: cpal::StreamError) {
 
 fn build_output_stream<T>(device: &cpal::Device, config: &StreamConfig, player: Arc<Mutex<Player>>) -> Result<cpal::Stream, SessionError>
     where
-        T: cpal::SizedSample + cpal::FromSample<f32>,
+        T: cpal::SizedSample + cpal::FromSample<f32> + Debug,
 {
     let channels = config.channels as usize;
     let stream = device.build_output_stream(
@@ -60,12 +61,15 @@ impl Session {
         let host = cpal::default_host();
         let output_device = host.default_output_device().expect("output device required");
 
-        let output_supported_config = output_device.default_output_config()
+        let output_supported_config = output_device
+            .default_output_config()
             .expect("default config for host-provided default output device must be valid");
 
         // TODO: Validate that buffer size is supported.
-        let buffer_size = BufferSize::Fixed(256);
+        let buffer_size = BufferSize::Fixed(128);
         let output_sample_format = output_supported_config.sample_format();
+        println!("Supported config: {:?}", output_supported_config);
+
         let mut output_config: StreamConfig = output_supported_config.into();
         output_config.buffer_size = buffer_size.clone();
 
