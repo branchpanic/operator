@@ -1,4 +1,5 @@
 use midly::MidiMessage;
+
 use op_engine::generator::Generator;
 
 #[derive(Copy, Clone)]
@@ -63,7 +64,7 @@ impl FaustGenerator {
     pub fn new(faust_dsp: Box<dyn FaustDsp<T=F32>>) -> Self {
         Self {
             faust_dsp,
-            last_note: 0
+            last_note: 0,
         }
     }
 }

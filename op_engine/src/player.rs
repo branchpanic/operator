@@ -112,7 +112,12 @@ impl Player {
         self.output_buf.fill(0.0);
 
         if self.playing_project {
-            project.timeline.render(self.time, &mut self.output_buf[..src_samples]);
+            if self.recording {
+                project.timeline.render_exclude(self.time, &mut self.output_buf[..src_samples], &[self.record_track]);
+            } else {
+                project.timeline.render(self.time, &mut self.output_buf[..src_samples]);
+            }
+
             self.time += src_samples;
             if self.time > project.timeline.len() && !self.recording {
                 self.time = 0;

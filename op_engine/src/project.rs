@@ -30,7 +30,7 @@ pub struct Project {
     pub sample_rate: u32,
     pub timeline: Timeline,
 
-    #[serde(skip, default="Project::default_generator")]
+    #[serde(skip, default = "Project::default_generator")]
     pub generator: Box<dyn Generator>,
 }
 
@@ -57,8 +57,7 @@ impl Project {
     }
 
     /// Loads a new Project. The path should be a directory containing a project file.
-    pub fn load(path: &String) -> Result<Self, ProjectError> {
-        let path = Path::new(path);
+    pub fn load(path: &Path) -> Result<Self, ProjectError> {
         let serialized_session = fs::read_to_string(path.join(PROJECT_FILE_NAME))?;
         let mut project: Project = serde_json::from_str(serialized_session.as_str())
             .map_err(|e| {
@@ -74,17 +73,10 @@ impl Project {
         Ok(project)
     }
 
-    pub fn load_overwrite(&mut self, path: &String) -> Result<(), ProjectError> {
-        let new = Self::load(path)?;
-        *self = new;
-
-        Ok(())
-    }
-
-    pub fn export_wav(&self, path: &String) -> Result<(), ProjectError> {
+    pub fn export_wav(&self, path: &Path) -> Result<(), ProjectError> {
         let samples = self.timeline.render_all();
-        let mut writer = hound::WavWriter::create(path, PROJECT_EXPORT_SPEC)
-            .expect("predefined wav spec must be valid");
+
+        let mut writer = hound::WavWriter::create(path, PROJECT_EXPORT_SPEC).unwrap();
 
         for sample in samples {
             writer.write_sample((sample * i16::MAX as f32) as i16)
@@ -108,8 +100,7 @@ impl Project {
         Ok(())
     }
 
-    pub fn save(&self, path: &String) -> Result<(), ProjectError> {
-        let path = Path::new(path);
+    pub fn save(&self, path: &Path) -> Result<(), ProjectError> {
         fs::create_dir_all(path)?;
 
         let serialized = serde_json::to_string(self)

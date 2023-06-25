@@ -1,10 +1,10 @@
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 
-use cpal::{BufferSize, ChannelCount, StreamConfig};
+use cpal::{BufferSize, StreamConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use crate::{Player, Time};
 
+use crate::{Player, Time};
 use crate::player::PlayerError;
 use crate::project::Project;
 
@@ -54,8 +54,8 @@ fn build_output_stream<T>(device: &cpal::Device, config: &StreamConfig, player: 
 }
 
 impl Session {
-    pub fn empty_with_defaults() -> Result<Self, SessionError> {
-        let project = Arc::new(Mutex::new(Project::new()));
+    pub fn new_with_project(project: Project) -> Result<Self, SessionError> {
+        let project = Arc::new(Mutex::new(project));
 
         // TODO: Hosts and devices will eventually need to be configurable.
         let host = cpal::default_host();
@@ -106,6 +106,10 @@ impl Session {
         };
 
         Ok(session)
+    }
+
+    pub fn new_empty() -> Result<Self, SessionError> {
+        Self::new_with_project(Project::new())
     }
 
     pub fn play(&mut self) -> Result<(), SessionError> {

@@ -8,7 +8,8 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.70"
 cpal = "0.15.2"
-iced = {version = "0.9.0", features = ["smol"]}
+iced = { version = "0.9.0", features = ["smol"] }
+iced_aw = { version = "0.5", default-features = false, features = ["number_input"] }
 midly = "0.5.3"
-op_engine = { path = "../op_engine"}
+op_engine = { path = "../op_engine" }
 rfd = "0.11.3"

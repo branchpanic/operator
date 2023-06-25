@@ -32,13 +32,19 @@ impl Timeline {
     }
 
     pub fn render(&self, start_time: Time, buf: &mut [f32]) {
+        self.render_exclude(start_time, buf, &[]);
+    }
+
+    pub fn render_exclude(&self, start_time: Time, buf: &mut [f32], exclude: &[usize]) {
         if start_time >= self.len() {
             buf.fill(0.0);
             return;
         }
 
         let rendered: Vec<Vec<f32>> = self.tracks.iter()
-            .map(|t| {
+            .enumerate()
+            .filter(|(i, _)| !exclude.contains(i))
+            .map(|(_, t)| {
                 let mut track_buf = vec![0.0f32; buf.len()];
                 t.render(start_time, &mut track_buf);
                 track_buf
