@@ -9,7 +9,6 @@ use iced::alignment::{Horizontal, Vertical};
 use iced::keyboard::Event::{KeyPressed, KeyReleased};
 use iced::keyboard::KeyCode;
 use iced::widget::{button, checkbox, column, container, pick_list, row, text, text_input};
-
 use iced_aw::{number_input, style::NumberInputStyles};
 
 use op_engine::{Project, Session};
@@ -208,7 +207,9 @@ impl Application for OpApplication {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        let elements = vec![0, 1, 2, 3];
+        // TODO: THIS IS GOING TO CAUSE PROBLEMS because it will block the audio thread
+        let project = self.session.project.lock().unwrap();
+        let tracks: Vec<usize> = (0..project.timeline.tracks.len()).collect();
 
         let transport_controls = row![
             if !self.playing {
@@ -218,7 +219,7 @@ impl Application for OpApplication {
             },
             button("Stop").on_press(OpMessage::Stop),
             checkbox("Record", self.recording, OpMessage::SetRecording),
-            pick_list(elements, Some(self.armed_track), OpMessage::SetArmedTrack)
+            pick_list(tracks, Some(self.armed_track), OpMessage::SetArmedTrack)
         ].spacing(4);
 
         let status_display = row![
@@ -242,10 +243,17 @@ impl Application for OpApplication {
             .padding(8)
             .width(Length::Fill);
 
-        let timeline = container(column![
-            text("Hello!").horizontal_alignment(Horizontal::Center).vertical_alignment(Vertical::Center),
-        ])
-            .center_x()
+        let timeline = container(column(
+            project.timeline.tracks.iter().enumerate()
+                .map(|(i, track)| {
+                    row![
+                        text(format!("Track {}", i)),
+                        container(row(track.iter_clips().map(|clip| {
+                            button("Clip").into()
+                        }).collect()))
+                    ].into()
+                })
+                .collect()))
             .center_y()
             .width(Length::Fill)
             .height(Length::Fill);

@@ -149,7 +149,7 @@ impl Track {
         buf
     }
 
-    pub(crate) fn iter_clips(&self) -> Iter<'_, ClipInstance> {
+    pub fn iter_clips(&self) -> Iter<'_, ClipInstance> {
         self.clips.iter()
     }
 }
