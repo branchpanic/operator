@@ -125,9 +125,6 @@ impl Player {
             }
 
             self.time += src_samples;
-            if self.time > project.timeline.len() && !self.recording {
-                self.time = 0;
-            }
         }
 
         for i in 0..src_samples {

@@ -8,6 +8,5 @@ process =
     s1 * env * vol
 with {
     env = en.asr(.05, 1.0, .1, gate);
-    lfo = os.osc(0.1);
     s1 = os.osc(freq);
 };
