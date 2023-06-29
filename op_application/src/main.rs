@@ -48,11 +48,12 @@ enum OpMessage {
     Export,
 }
 
-fn apply_default_generator(project: &mut Project) {
+fn apply_default_generator(session: &mut Session) {
     let mut sine = faust_engines::Sine::new();
-    sine.init(project.sample_rate as i32);
+    let sample_rate = session.project.read().unwrap().sample_rate;
+    sine.init(sample_rate as i32);
     let generator = FaustGenerator::new(Box::new(sine));
-    project.generator = Box::new(generator);
+    session.set_generator(Box::new(generator));
 }
 
 impl Application for OpApplication {
@@ -62,12 +63,8 @@ impl Application for OpApplication {
     type Flags = ();
 
     fn new(_: Self::Flags) -> (Self, Command<Self::Message>) {
-        let session = Session::new_empty().unwrap();
-
-        {
-            let mut project = session.project.lock().unwrap();
-            apply_default_generator(project.deref_mut());
-        }
+        let mut session = Session::new_empty().unwrap();
+        apply_default_generator(&mut session);
 
         (
             Self {
@@ -148,7 +145,7 @@ impl Application for OpApplication {
             // TODO: Don't block UI to show the file dialog in save/load/export
 
             OpMessage::Save => {
-                let project = self.session.project.lock().unwrap();
+                let project = self.session.project.read().unwrap();
 
                 if let Some(path) = &self.project_path {
                     project.save(path).unwrap();
@@ -169,21 +166,11 @@ impl Application for OpApplication {
                     Some(path) => path
                 };
 
-                let mut project = Project::load(&path).unwrap();
-                apply_default_generator(&mut project);
+                let project = Project::load(&path).unwrap();
+                let mut session = Session::new_with_project(project).unwrap();
+                apply_default_generator(&mut session);
 
                 self.project_path = Some(path);
-
-                let session = Session::new_with_project(project).unwrap();
-
-                {
-                    let mut project = session.project.lock().unwrap();
-                    let mut sine = faust_engines::Sine::new();
-                    sine.init(project.sample_rate as i32);
-                    let generator = FaustGenerator::new(Box::new(sine));
-                    project.generator = Box::new(generator);
-                }
-
                 self.session = session;
                 self.playing = false;
                 self.recording = false;
@@ -198,7 +185,7 @@ impl Application for OpApplication {
                     Some(path) => path
                 };
 
-                let project = self.session.project.lock().unwrap();
+                let project = self.session.project.read().unwrap();
                 project.export_wav(&path).unwrap();
             }
         };
@@ -208,7 +195,7 @@ impl Application for OpApplication {
 
     fn view(&self) -> Element<'_, Self::Message> {
         // TODO: THIS IS GOING TO CAUSE PROBLEMS because it will block the audio thread
-        let project = self.session.project.lock().unwrap();
+        let project = self.session.project.read().unwrap();
         let tracks: Vec<usize> = (0..project.timeline.tracks.len()).collect();
 
         let transport_controls = row![

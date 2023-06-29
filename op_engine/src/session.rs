@@ -1,18 +1,18 @@
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use cpal::{BufferSize, StreamConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::{Player, Time};
+use crate::generator::Generator;
 use crate::player::PlayerError;
 use crate::project::Project;
 
 /// A Session is a loaded Project plus a context for playing and recording audio.
 pub struct Session {
-    pub project: Arc<Mutex<Project>>,
+    pub project: Arc<RwLock<Project>>,
     player: Arc<Mutex<Player>>,
-
     output_stream: cpal::Stream,
 }
 
@@ -55,7 +55,7 @@ fn build_output_stream<T>(device: &cpal::Device, config: &StreamConfig, player: 
 
 impl Session {
     pub fn new_with_project(project: Project) -> Result<Self, SessionError> {
-        let project = Arc::new(Mutex::new(project));
+        let project = Arc::new(RwLock::new(project));
 
         // TODO: Hosts and devices will eventually need to be configurable.
         let host = cpal::default_host();
@@ -139,8 +139,13 @@ impl Session {
         player.set_recording(recording, record_track);
     }
 
-    pub fn handle(&self, msg: midly::MidiMessage) {
-        let mut project = self.project.lock().unwrap();
-        project.generator.handle(msg);
+    pub fn handle(&mut self, msg: midly::MidiMessage) {
+        let mut player = self.player.lock().unwrap();
+        player.generator.handle(msg);
+    }
+
+    pub fn set_generator(&mut self, generator: Box<dyn Generator>) {
+        let mut player = self.player.lock().unwrap();
+        player.generator = generator;
     }
 }

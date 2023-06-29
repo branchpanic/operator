@@ -1,18 +1,22 @@
 use std::fmt::Debug;
 use std::mem::take;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use cpal::{BufferSize, StreamConfig};
 use dasp::{signal, Signal};
 use dasp::interpolate::linear::Linear;
 
 use crate::{Clip, Project, Time};
+use crate::generator::Generator;
+use crate::generator::sine::SineGenerator;
 
 pub struct Player {
     config: StreamConfig,
     output_buf: Vec<f32>,  // FIXME: Currently assuming mono
 
-    project: Arc<Mutex<Project>>,
+    project: Arc<RwLock<Project>>,
+    pub generator: Box<dyn Generator>,
+
     pub playing_project: bool,
     time: Time,
 
@@ -29,7 +33,7 @@ pub enum PlayerError {
 }
 
 impl Player {
-    pub fn new(project: Arc<Mutex<Project>>, config: StreamConfig) -> Result<Self, PlayerError> {
+    pub fn new(project: Arc<RwLock<Project>>, config: StreamConfig) -> Result<Self, PlayerError> {
         let buf_size = match config.buffer_size {
             BufferSize::Fixed(frame_count) => frame_count as usize,
             _ => return Err(PlayerError::InvalidBufferSize(config.buffer_size)),
@@ -37,6 +41,8 @@ impl Player {
 
         Ok(Player {
             project,
+            generator: Box::new(SineGenerator::new(44100)),
+
             time: 0,
             config,
             output_buf: vec![0.0; buf_size],
@@ -67,7 +73,7 @@ impl Player {
     }
 
     fn write_recorded_clip(&mut self) {
-        let mut project = self.project.lock().unwrap();
+        let mut project = self.project.write().unwrap();
         let clip = Clip::new(take(&mut self.record_buf));
         project.timeline.tracks[self.record_track].add_clip(self.record_start, clip);
     }
@@ -96,7 +102,7 @@ impl Player {
         where
             T: cpal::Sample + cpal::FromSample<f32>,
     {
-        let mut project = self.project.lock().unwrap();
+        let project = self.project.read().unwrap();
 
         let dst_samples = output.len() / channels;
         let src_sample_rate = project.sample_rate as f64;
@@ -125,7 +131,7 @@ impl Player {
         }
 
         for i in 0..src_samples {
-            let sample = project.generator.next();
+            let sample = self.generator.next();
             self.output_buf[i] += sample;
             self.output_buf[i] = self.output_buf[i].clamp(-1.0, 1.0);
 

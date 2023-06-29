@@ -2,8 +2,6 @@ use std::{fs, io};
 use std::path::Path;
 
 use crate::{Time, Timeline};
-use crate::generator::Generator;
-use crate::generator::sine::SineGenerator;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ProjectError {
@@ -29,9 +27,6 @@ pub enum ProjectError {
 pub struct Project {
     pub sample_rate: u32,
     pub timeline: Timeline,
-
-    #[serde(skip, default = "Project::default_generator")]
-    pub generator: Box<dyn Generator>,
 }
 
 const PROJECT_EXPORT_SPEC: hound::WavSpec = hound::WavSpec {
@@ -44,22 +39,17 @@ const PROJECT_EXPORT_SPEC: hound::WavSpec = hound::WavSpec {
 const PROJECT_FILE_NAME: &str = "project.json";
 
 impl Project {
-    fn default_generator() -> Box<dyn Generator> {
-        Box::new(SineGenerator::new(44100))
-    }
-
     pub fn new() -> Self {
         Self {
             sample_rate: 44100,
             timeline: Timeline::new(),
-            generator: Box::new(SineGenerator::new(44100)),
         }
     }
 
     /// Loads a new Project. The path should be a directory containing a project file.
     pub fn load(path: &Path) -> Result<Self, ProjectError> {
         let serialized_session = fs::read_to_string(path.join(PROJECT_FILE_NAME))?;
-        let mut project: Project = serde_json::from_str(serialized_session.as_str())
+        let project: Project = serde_json::from_str(serialized_session.as_str())
             .map_err(|e| {
                 ProjectError::LoadProjectError {
                     message: e.to_string(),
@@ -67,8 +57,6 @@ impl Project {
                     column: e.column(),
                 }
             })?;
-
-        project.generator = Box::new(SineGenerator::new(project.sample_rate));
 
         Ok(project)
     }
