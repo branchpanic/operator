@@ -2,16 +2,15 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use iced::{Alignment, Application, Color, Event, Length, Point, Rectangle, subscription, Theme, time, window};
+use iced::{Alignment, Application, Event, Length, Point, Rectangle, subscription, Theme, time, window};
 use iced::{Command, Element, executor, Settings, Subscription};
 use iced::alignment::{Horizontal, Vertical};
 use iced::keyboard::Event::{KeyPressed, KeyReleased};
 use iced::keyboard::KeyCode;
-use iced::widget::{button, Canvas, checkbox, column, container, pick_list, row, text, text_input};
-use iced::widget::canvas::{Cursor, Frame, Geometry, Path, Stroke};
-use iced_native::Program;
+use iced::widget::{button, slider, checkbox, column, container, pick_list, row, text};
+use iced_native::widget::scrollable;
 
-use op_engine::{Clip, Project, Session};
+use op_engine::{Project, Session};
 
 use crate::faust::{FaustDsp, FaustGenerator};
 use crate::keyboard::Keyboard;
@@ -19,6 +18,7 @@ use crate::keyboard::Keyboard;
 mod keyboard;
 mod faust;
 mod faust_engines;
+mod view;
 
 pub fn main() -> iced::Result {
     OpApplication::run(Settings {
@@ -26,6 +26,8 @@ pub fn main() -> iced::Result {
         ..Settings::default()
     })
 }
+
+const BASE_SAMPLES_PER_PIXEL: i32 = 300;
 
 struct OpApplication {
     session: Session,
@@ -35,10 +37,11 @@ struct OpApplication {
     armed_track: usize,
     keyboard: Keyboard,
     held_keys: HashSet<KeyCode>,
+    zoom: f32
 }
 
 #[derive(Debug, Clone)]
-enum OpMessage {
+pub enum OpMessage {
     Play,
     Pause,
     Stop,
@@ -49,6 +52,7 @@ enum OpMessage {
     Save,
     Load,
     Export,
+    SetZoom(f32)
 }
 
 fn apply_default_generator(session: &mut Session) {
@@ -57,54 +61,6 @@ fn apply_default_generator(session: &mut Session) {
     sine.init(sample_rate as i32);
     let generator = FaustGenerator::new(Box::new(sine));
     session.set_generator(Box::new(generator));
-}
-
-struct ClipView {
-    clip: Clip,
-    samples_per_step: usize,
-}
-
-impl iced::widget::canvas::Program<OpMessage> for ClipView {
-    type State = ();
-
-    fn draw(&self, _state: &Self::State, _theme: &Theme, bounds: Rectangle, _cursor: Cursor) -> Vec<Geometry> {
-        let mut frame = Frame::new(bounds.size());
-
-        // frame.fill_rectangle(Point::ORIGIN, bounds.size(), Color::BLACK);
-
-        if self.clip.data.len() > 0 {
-            let get_y = |sample: f32| {
-                (10.0 * -sample * 0.5 + 0.5) * bounds.height
-            };
-
-            let path = Path::new(|builder| {
-                builder.move_to(Point::new(0.0, get_y(self.clip.data[0])));
-
-                for i in 0..self.clip.data.len() / self.samples_per_step {
-                    let mut sample = 0.0;
-
-                    for j in 0..self.samples_per_step {
-                        sample += self.clip.data[i * self.samples_per_step + j];
-                    }
-
-                    sample /= self.samples_per_step as f32;
-                    builder.line_to(Point::new(i as f32, get_y(sample)));
-                }
-            });
-
-            frame.stroke(&path, Stroke::default().with_width(2.0).with_color(Color::WHITE));
-        }
-
-        vec![frame.into_geometry()]
-    }
-}
-
-fn view_clip(clip: Clip) -> Element<'static, OpMessage> {
-    let width = clip.data.len() / 300;
-    Canvas::new(ClipView { clip, samples_per_step: 300 })
-        .width(width as f32)
-        .height(128.0)
-        .into()
 }
 
 impl Application for OpApplication {
@@ -126,6 +82,7 @@ impl Application for OpApplication {
                 armed_track: 0,
                 keyboard: Keyboard::new(),
                 held_keys: HashSet::new(),
+                zoom: 1.0,
             },
             Command::none()
         )
@@ -191,6 +148,10 @@ impl Application for OpApplication {
                     Event::Window(window::Event::CloseRequested) => { return window::close(); }
                     _ => {}
                 };
+            }
+
+            OpMessage::SetZoom(zoom) => {
+                self.zoom = zoom;
             }
 
             // TODO: Don't block UI to show the file dialog in save/load/export
@@ -280,17 +241,21 @@ impl Application for OpApplication {
             .padding(8)
             .width(Length::Fill);
 
-        let timeline = container(column(
+        let timeline = container(
+            scrollable(column(
             project.timeline.tracks.iter().enumerate()
                 .map(|(i, track)| {
                     row![
-                        text(format!("Track {}", i)),
+                        text(format!("{}", i)).height(Length::Fill).vertical_alignment(Vertical::Center),
                         container(row(track.iter_clips().map(|clip_inst| {
-                            view_clip(clip_inst.clip.clone()) // TODO: Rc
+                            view::timeline_clip::clip_view(
+                                clip_inst.clip.clone(),
+                                (self.zoom * BASE_SAMPLES_PER_PIXEL as f32) as usize
+                            )
                         }).collect()))
-                    ].height(128.0).into()
+                    ].padding(20.0).spacing(15.0).height(128.0).into()
                 })
-                .collect()))
+                .collect())))
             .center_y()
             .width(Length::Fill)
             .height(Length::Fill);
@@ -298,6 +263,7 @@ impl Application for OpApplication {
         column![
             top_bar,
             timeline,
+            slider(0.05..=5.0, self.zoom, OpMessage::SetZoom).step(0.1)
         ].into()
     }
 
