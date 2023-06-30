@@ -1,15 +1,18 @@
 use iced::{Color, Element, Point, Rectangle, Theme};
 use iced::widget::Canvas;
 use iced::widget::canvas::{Cursor, Frame, Geometry, LineCap, LineJoin, Path, Stroke};
+use iced_native::Length;
+
 use op_engine::Clip;
+
 use crate::OpMessage;
 
-pub struct ClipView {
+pub struct ClipProgram {
     clip: Clip,
     resolution: usize,
 }
 
-impl iced::widget::canvas::Program<OpMessage> for ClipView {
+impl iced::widget::canvas::Program<OpMessage> for ClipProgram {
     type State = ();
 
     fn draw(&self, _state: &Self::State, _theme: &Theme, bounds: Rectangle, _cursor: Cursor) -> Vec<Geometry> {
@@ -28,7 +31,7 @@ impl iced::widget::canvas::Program<OpMessage> for ClipView {
                     let mut sample = 0.0;
 
                     for j in 0..self.resolution {
-                        sample += self.clip.data[i * self.resolution + j];
+                        sample += self.clip.data[i * self.resolution + j].abs();
                     }
 
                     sample /= self.resolution as f32;
@@ -37,7 +40,7 @@ impl iced::widget::canvas::Program<OpMessage> for ClipView {
                     builder.line_to(point);
                 }
 
-                builder.circle(point, 2.0);
+                // builder.circle(point, 3.0);
             });
 
             frame.stroke(&path, Stroke::default()
@@ -53,8 +56,16 @@ impl iced::widget::canvas::Program<OpMessage> for ClipView {
 
 pub fn clip_view(clip: Clip, resolution: usize) -> Element<'static, OpMessage> {
     let width = clip.data.len() / resolution;
-    Canvas::new(ClipView { clip, resolution })
+    Canvas::new(ClipProgram { clip, resolution })
         .width(width as f32)
-        .height(200.0)
+        .height(Length::Fill)
+        .into()
+}
+
+pub fn empty_clip_view(length: usize, resolution: usize) -> Element<'static, OpMessage> {
+    let width = length / resolution;
+    Canvas::new(ClipProgram { clip: Clip::new(vec![0.0; length]), resolution })
+        .width(width as f32)
+        .height(Length::Fill)
         .into()
 }

@@ -2,23 +2,25 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use iced::{Alignment, Application, Event, Length, Point, Rectangle, subscription, Theme, time, window};
+use iced::{Alignment, Application, Event, Length, subscription, Theme, time, window};
 use iced::{Command, Element, executor, Settings, Subscription};
 use iced::alignment::{Horizontal, Vertical};
 use iced::keyboard::Event::{KeyPressed, KeyReleased};
 use iced::keyboard::KeyCode;
-use iced::widget::{button, slider, checkbox, column, container, pick_list, row, text};
-use iced_native::widget::scrollable;
+use iced::widget::{button, checkbox, column, container, pick_list, row, slider, text};
 
 use op_engine::{Project, Session};
 
 use crate::faust::{FaustDsp, FaustGenerator};
-use crate::keyboard::Keyboard;
+use crate::virtual_keyboard::VirtualKeyboard;
+use crate::timeline_view::timeline_view;
 
-mod keyboard;
+mod virtual_keyboard;
 mod faust;
 mod faust_engines;
-mod view;
+
+mod clip_view;
+mod timeline_view;
 
 pub fn main() -> iced::Result {
     OpApplication::run(Settings {
@@ -27,17 +29,15 @@ pub fn main() -> iced::Result {
     })
 }
 
-const BASE_SAMPLES_PER_PIXEL: i32 = 300;
-
 struct OpApplication {
     session: Session,
     project_path: Option<PathBuf>,
     playing: bool,
     recording: bool,
     armed_track: usize,
-    keyboard: Keyboard,
+    virtual_keyboard: VirtualKeyboard,
     held_keys: HashSet<KeyCode>,
-    zoom: f32
+    zoom: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -52,7 +52,7 @@ pub enum OpMessage {
     Save,
     Load,
     Export,
-    SetZoom(f32)
+    SetZoom(f32),
 }
 
 fn apply_default_generator(session: &mut Session) {
@@ -80,7 +80,7 @@ impl Application for OpApplication {
                 playing: false,
                 recording: false,
                 armed_track: 0,
-                keyboard: Keyboard::new(),
+                virtual_keyboard: VirtualKeyboard::new(),
                 held_keys: HashSet::new(),
                 zoom: 1.0,
             },
@@ -141,7 +141,7 @@ impl Application for OpApplication {
                             _ => {}
                         };
 
-                        for msg in self.keyboard.update(&self.held_keys) {
+                        for msg in self.virtual_keyboard.update(&self.held_keys) {
                             self.session.handle(msg);
                         }
                     }
@@ -241,29 +241,12 @@ impl Application for OpApplication {
             .padding(8)
             .width(Length::Fill);
 
-        let timeline = container(
-            scrollable(column(
-            project.timeline.tracks.iter().enumerate()
-                .map(|(i, track)| {
-                    row![
-                        text(format!("{}", i)).height(Length::Fill).vertical_alignment(Vertical::Center),
-                        container(row(track.iter_clips().map(|clip_inst| {
-                            view::timeline_clip::clip_view(
-                                clip_inst.clip.clone(),
-                                (self.zoom * BASE_SAMPLES_PER_PIXEL as f32) as usize
-                            )
-                        }).collect()))
-                    ].padding(20.0).spacing(15.0).height(128.0).into()
-                })
-                .collect())))
-            .center_y()
-            .width(Length::Fill)
-            .height(Length::Fill);
+        let timeline = timeline_view(&project.timeline, self.zoom);
 
         column![
             top_bar,
             timeline,
-            slider(0.05..=5.0, self.zoom, OpMessage::SetZoom).step(0.1)
+            slider(0.05..=5.0, self.zoom, OpMessage::SetZoom).step(0.01)
         ].into()
     }
 

@@ -9,13 +9,13 @@ const SCALE: [KeyCode; 13] = {
 const OCTAVE_UP: KeyCode = KeyCode::X;
 const OCTAVE_DOWN: KeyCode = KeyCode::Z;
 
-pub struct Keyboard {
+pub struct VirtualKeyboard {
     base: u8,
     velocity: midly::num::u7,
     keys_held: HashSet<KeyCode>,
 }
 
-impl Keyboard {
+impl VirtualKeyboard {
     pub fn new() -> Self {
         Self {
             base: 60,
