@@ -9,4 +9,4 @@
 use crate::faust::*;
 
 include!(concat!(env!("OUT_DIR"), "/sine.rs"));
-include!(concat!(env!("OUT_DIR"), "/noise.rs"));
+include!(concat!(env!("OUT_DIR"), "/saw.rs"));

@@ -10,6 +10,7 @@ use iced::keyboard::KeyCode;
 use iced::widget::{button, checkbox, column, container, pick_list, row, slider, text};
 
 use op_engine::{Project, Session};
+use op_engine::generator::Generator;
 
 use crate::faust::{FaustDsp, FaustGenerator};
 use crate::virtual_keyboard::VirtualKeyboard;
@@ -38,6 +39,7 @@ struct OpApplication {
     virtual_keyboard: VirtualKeyboard,
     held_keys: HashSet<KeyCode>,
     zoom: f32,
+    current_generator: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +55,7 @@ pub enum OpMessage {
     Load,
     Export,
     SetZoom(f32),
+    SetGenerator(usize),
 }
 
 fn apply_default_generator(session: &mut Session) {
@@ -83,6 +86,7 @@ impl Application for OpApplication {
                 virtual_keyboard: VirtualKeyboard::new(),
                 held_keys: HashSet::new(),
                 zoom: 1.0,
+                current_generator: 0,
             },
             Command::none()
         )
@@ -130,6 +134,22 @@ impl Application for OpApplication {
                     self.armed_track = armed_track;
                     self.session.set_recording(self.recording, armed_track);
                 }
+            }
+
+            OpMessage::SetGenerator(generator) => {
+                self.current_generator = generator;
+
+                let mut dsp: Box<dyn FaustDsp<T=f32>> = match generator {
+                    0 => Box::new(faust_engines::Sine::new()),
+                    1 => Box::new(faust_engines::Saw::new()),
+                    _ => return Command::none(),
+                };
+
+                let sample_rate = self.session.project.read().unwrap().sample_rate;
+                dsp.init(sample_rate as i32);
+
+                let generator = Box::new(FaustGenerator::new(dsp));
+                self.session.set_generator(generator);
             }
 
             OpMessage::InputEvent(event) => {
@@ -208,6 +228,7 @@ impl Application for OpApplication {
     fn view(&self) -> Element<'_, Self::Message> {
         let project = self.session.project.read().unwrap();
         let tracks: Vec<usize> = (0..project.timeline.tracks.len()).collect();
+        let generators: Vec<usize> = vec![0, 1];
 
         let transport_controls = row![
             if !self.playing {
@@ -234,9 +255,15 @@ impl Application for OpApplication {
         ].spacing(4)).align_x(Horizontal::Right);
 
         let top_bar = container(row![
-            transport_controls.align_items(Alignment::Center).width(Length::FillPortion(1)),
-            status_display.align_items(Alignment::Center).width(Length::FillPortion(2)),
-            project_controls.width(Length::FillPortion(1)),
+            transport_controls.align_items(Alignment::Center).width(Length::FillPortion(2)),
+            status_display.align_items(Alignment::Center).width(Length::FillPortion(1)),
+            project_controls.width(Length::FillPortion(2)),
+        ])
+            .padding(8)
+            .width(Length::Fill);
+
+        let temp_generator_control = container(row![
+            pick_list(generators, Some(self.current_generator.clone()), OpMessage::SetGenerator),
         ])
             .padding(8)
             .width(Length::Fill);
@@ -245,6 +272,7 @@ impl Application for OpApplication {
 
         column![
             top_bar,
+            temp_generator_control,
             timeline,
             slider(0.05..=5.0, self.zoom, OpMessage::SetZoom).step(0.01)
         ].into()

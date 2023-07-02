@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let dsp_path = dsp_file.unwrap().path();
         let dsp_name = dsp_path.file_stem().unwrap();
         let rs_path = out_dir.join(dsp_name).with_extension("rs");
-        let _ = process::Command::new("faust")
+        let result = process::Command::new("faust")
             .arg("-wall")
             .arg("-light")
             .args(["-lang", "rust"])
@@ -32,6 +32,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .arg(dsp_path)
             .args(["-o", rs_path.to_str().unwrap()])
             .output()?;
+
+        assert!(result.status.success());
     }
 
     Ok(())
