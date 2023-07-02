@@ -1,4 +1,4 @@
-mod track;
+pub mod track;
 mod clip;
 mod timeline;
 mod player;

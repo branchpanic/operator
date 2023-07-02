@@ -13,15 +13,13 @@ use op_engine::{Project, Session};
 use op_engine::generator::Generator;
 
 use crate::faust::{FaustDsp, FaustGenerator};
+use crate::view::timeline::timeline_view;
 use crate::virtual_keyboard::VirtualKeyboard;
-use crate::timeline_view::timeline_view;
 
 mod virtual_keyboard;
 mod faust;
 mod faust_engines;
-
-mod clip_view;
-mod timeline_view;
+mod view;
 
 pub fn main() -> iced::Result {
     OpApplication::run(Settings {
