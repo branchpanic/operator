@@ -1,10 +1,11 @@
+use std::io::Read;
 use std::iter;
 
 use iced::{Color, Element, Length, Point, Rectangle, Size, Theme};
 use iced::alignment::Vertical;
 use iced::mouse::Interaction;
 use iced::widget::Canvas;
-use iced::widget::canvas::{Cursor, Event, Frame, Geometry, LineCap, LineJoin, Path, Program, Stroke};
+use iced::widget::canvas::{Cursor, Event, Fill, Frame, Geometry, LineCap, LineJoin, Path, Program, Stroke, Style};
 use iced_native::event::Status;
 use iced_native::row;
 use iced_native::widget::{column, container, text};
@@ -14,6 +15,7 @@ use op_engine::track::ClipInstance;
 use crate::OpMessage;
 
 const BASE_SAMPLES_PER_PIXEL: f32 = 300.0;
+const BASE_RULER_SPACING_SAMPLES: f32 = 22050.0;
 
 struct ClipLayout {
     clip_instance: ClipInstance,
@@ -118,19 +120,55 @@ impl TrackProgram {
         iter::once(background)
     }
 
+    fn draw_ruler(&self, bounds: &Rectangle) -> impl Iterator<Item=Geometry> {
+        let marks = 20;
+
+        let first_mark_number = (self.start_time / BASE_RULER_SPACING_SAMPLES as usize);
+        let first_mark_time = first_mark_number * BASE_RULER_SPACING_SAMPLES as usize;
+
+        let path = Path::new(|builder| {
+             for i in 0..marks {
+                 let time = first_mark_time + i * BASE_RULER_SPACING_SAMPLES as usize;
+                 let x = time as f32 / (self.zoom * BASE_SAMPLES_PER_PIXEL);
+                 builder.move_to(Point::new(x, 0.0));
+                 builder.line_to(Point::new(x, bounds.height));
+             }
+        });
+
+        let mut frame = Frame::new(bounds.size());
+        frame.stroke(&path, Stroke::default()
+            .with_width(1.0)
+            .with_color(Color::from_rgb(0.22, 0.22, 0.22)));
+
+        let background = frame.into_geometry();
+        iter::once(background)
+    }
+
     fn draw_playhead(&self, bounds: &Rectangle) -> impl Iterator<Item=Geometry> {
         let playhead_relative_x = self.current_time - self.start_time;
         let x = playhead_relative_x as f32 / (self.zoom * BASE_SAMPLES_PER_PIXEL);
 
-        let path = Path::line(
+        let line = Path::line(
             Point::new(x, 0.0),
             Point::new(x, bounds.height),
         );
 
         let mut frame = Frame::new(bounds.size());
-        frame.stroke(&path, Stroke::default()
+        frame.stroke(&line, Stroke::default()
             .with_width(2.0)
             .with_color(Color::WHITE));
+
+        let handle = Path::new(|builder| {
+            builder.move_to(Point::new(x - 5.0, 0.0));
+            builder.line_to(Point::new(x + 5.0, 0.0));
+            builder.line_to(Point::new(x, 10.0));
+        });
+
+        frame.fill(&handle, Fill {
+            style: Style::Solid(Color::WHITE),
+            ..Default::default()
+        });
+
         let background = frame.into_geometry();
         iter::once(background)
     }
@@ -153,6 +191,7 @@ impl Program<OpMessage> for TrackProgram {
 
     fn draw(&self, state: &Self::State, _theme: &Theme, bounds: Rectangle, _cursor: Cursor) -> Vec<Geometry> {
         self.draw_baseline(&bounds)
+            .chain(self.draw_ruler(&bounds))
             .chain(self.draw_playhead(&bounds))
             .chain(self.clip_layouts.iter().enumerate().flat_map(|(i, c)| { c.draw(&bounds, Some(i) == state.hovered_clip) }))
             .collect()
