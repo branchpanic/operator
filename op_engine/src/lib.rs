@@ -13,7 +13,8 @@ pub use player::Player;
 pub use session::Session;
 pub use project::Project;
 
-type Time = usize;  // in samples
+// TODO: Make this type-safe
+pub type Time = usize;  // in samples
 
 fn mix(sources: &[&[f32]], buf: &mut [f32]) {
     for i in 0..buf.len() {

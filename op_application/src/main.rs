@@ -268,13 +268,19 @@ impl Application for OpApplication {
             .padding(8)
             .width(Length::Fill);
 
-        let timeline = timeline_view(&project.timeline, self.zoom);
+        let timeline = timeline_view(&project.timeline, self.zoom, self.session.time());
+
+        let temp_sliders = container(column![
+            container(row![
+                text("Zoom").width(Length::Fixed(100.0)),
+                slider(0.05..=5.0, self.zoom, OpMessage::SetZoom).step(0.01)]),
+        ]);
 
         column![
             top_bar,
             temp_generator_control,
             timeline,
-            slider(0.05..=5.0, self.zoom, OpMessage::SetZoom).step(0.01)
+            temp_sliders,
         ].into()
     }
 
