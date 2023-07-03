@@ -165,244 +165,257 @@ impl Track {
     }
 }
 
-// TODO: Update me!
-//
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-//
-//     #[test]
-//     fn test_add_clip() {
-//         let mut track = Track::new();
-//
-//         let clip = Clip::new(vec![1.0]);
-//         let result = track.instantiate_clip(0, clip.clone());
-//         assert_eq!(clip.data, result.data);
-//
-//         let clip = Clip::new(vec![2.0]);
-//         let result = track.instantiate_clip(1, clip.clone());
-//         assert_eq!(clip.data, result.data);
-//     }
-//
-//     #[test]
-//     fn test_last_clip() {
-//         let mut track = Track::new();
-//
-//         assert!(track.last_clip().is_none(),
-//                 "last clip must be None when track does not contain clips");
-//
-//         // 1. only clip in the track should be the last clip
-//         // last
-//         // v
-//         // 1--------------
-//         let clip = Clip::new(vec![1.0]);
-//         track.instantiate_clip(0, clip.clone());
-//         let last_clip = track.last_clip()
-//             .expect("last clip must be present when track contains clips");
-//
-//         assert_eq!(clip.data, last_clip.clip.data);
-//
-//         // 2. two disjoint clips, latter should be the last clip
-//         //   last
-//         //   v
-//         // 1-2------------
-//         let clip = Clip::new(vec![2.0]);
-//         track.instantiate_clip(2, clip.clone());
-//         let last_clip = track.last_clip()
-//             .expect("last clip must be present when track contains clips");
-//
-//         assert_eq!(clip.data, last_clip.clip.data);
-//
-//         // 3. overlapping clips, clip with latest end should be the last clip
-//         //          last
-//         //          v
-//         // 1-2------------
-//         // 3333333333-----
-//         let clip = Clip::new(vec![3.0; 10]);
-//         track.instantiate_clip(0, clip.clone());
-//         let last_clip = track.last_clip()
-//             .expect("last clip must be present when track contains clips");
-//
-//         assert_eq!(clip.data, last_clip.clip.data);
-//     }
-//
-//     #[test]
-//     fn test_clip_at() {
-//         let mut track = Track::new();
-//
-//         assert!(track.clip_at(0).is_none());
-//
-//         let clip = Clip::new(vec![1.0, 1.0]);
-//         track.instantiate_clip(0, clip.clone());
-//
-//         assert_eq!(clip.data, track.clip_at(0).unwrap().clip.data);
-//         assert_eq!(clip.data, track.clip_at(1).unwrap().clip.data);
-//         assert!(track.clip_at(2).is_none());
-//
-//         let short_clip = Clip::new(vec![2.0]);
-//         track.instantiate_clip(1, short_clip.clone());
-//
-//         assert_eq!(clip.data, track.clip_at(0).unwrap().clip.data);
-//         assert_eq!(short_clip.data, track.clip_at(1).unwrap().clip.data,
-//                    "latest added clip should take precedence when overlapping");
-//         assert!(track.clip_at(2).is_none());
-//     }
-//
-//     #[test]
-//     fn test_next_clip() {
-//         let mut track = Track::new();
-//
-//         assert!(track.next_clip(0).is_none());
-//
-//         // 1. query during clip should not return clip
-//         // t
-//         // v        next=None
-//         // 11-----------
-//         let clip = Clip::new(vec![1.0, 1.0]);
-//         track.instantiate_clip(0, clip.clone());
-//         assert!(track.next_clip(0).is_none(),
-//                 "next_clip should not return clips where start <= t < end");
-//
-//         // 2. two disjoint clips, query during first should return second
-//         // t  next
-//         // v  v
-//         // 11-2---------
-//         let clip = Clip::new(vec![2.0]);
-//         track.instantiate_clip(3, clip.clone());
-//         let result = track.next_clip(0).unwrap();
-//         assert_eq!(3, result.time);
-//         assert_eq!(clip.data, result.clip.data);
-//         assert!(track.next_clip(3).is_none());
-//
-//         // 3. clips overlapping at t, query before overlap should return overlapping clip
-//         // t
-//         // v
-//         // 11-2---------
-//         // -3-----------
-//         //  ^
-//         //  next
-//         let clip = Clip::new(vec![3.0]);
-//         track.instantiate_clip(1, clip.clone());
-//         let result = track.next_clip(0).unwrap();
-//         assert_eq!(1, result.time);
-//         assert_eq!(clip.data, result.clip.data);
-//
-//         // 4. t is past end of all clips, query should return none
-//         assert!(track.next_clip(1234).is_none());
-//     }
-//
-//     #[test]
-//     fn test_render() {
-//         {
-//             let track = Track::new();
-//             let mut buf = vec![0.0; 4];
-//             track.render(0, &mut buf);
-//             assert_eq!(buf, vec![0.0; 4]);
-//         }
-//
-//         // clip that matches window exactly
-//         // [  ]
-//         // 1111
-//         {
-//             let mut track = Track::new();
-//             let mut buf = vec![0.0; 4];
-//             track.instantiate_clip(0, Clip::new(vec![1.0; 4]));
-//             track.render(0, &mut buf);
-//             assert_eq!(buf, vec![1.0; 4])
-//         }
-//
-//         // window expands past clip on right
-//         //   [  ]
-//         // 1111--
-//         {
-//             let mut track = Track::new();
-//             let mut buf = vec![0.0; 4];
-//             track.instantiate_clip(0, Clip::new(vec![1.0; 4]));
-//             track.render(2, &mut buf);
-//             assert_eq!(buf, vec![1.0, 1.0, 0.0, 0.0])
-//         }
-//
-//         // window expands past clip on left
-//         // [  ]
-//         // --1111
-//         {
-//             let mut track = Track::new();
-//             let mut buf = vec![0.0; 4];
-//             track.instantiate_clip(2, Clip::new(vec![1.0; 4]));
-//             track.render(0, &mut buf);
-//             assert_eq!(buf, vec![0.0, 0.0, 1.0, 1.0])
-//         }
-//
-//         // window expands past clip on both sides
-//         // [    ]
-//         // --11--
-//         {
-//             let mut track = Track::new();
-//             let mut buf = vec![0.0; 6];
-//             track.instantiate_clip(2, Clip::new(vec![1.0; 2]));
-//             track.render(0, &mut buf);
-//             assert_eq!(buf, vec![0.0, 0.0, 1.0, 1.0, 0.0, 0.0])
-//         }
-//
-//         // window beyond all clips
-//         //             [  ]
-//         // --11-- ... ------
-//         {
-//             let mut track = Track::new();
-//             let mut buf = vec![0.0; 4];
-//             track.instantiate_clip(2, Clip::new(vec![1.0; 2]));
-//             track.render(100, &mut buf);
-//             assert_eq!(buf, vec![0.0; 4])
-//         }
-//
-//         // window containing multiple clips
-//         // [ ]
-//         // 1-2
-//         {
-//             let mut track = Track::new();
-//             let mut buf = vec![0.0; 3];
-//             track.instantiate_clip(0, Clip::new(vec![1.0]));
-//             track.instantiate_clip(2, Clip::new(vec![2.0]));
-//             track.render(0, &mut buf);
-//             assert_eq!(buf, vec![1.0, 0.0, 2.0])
-//         }
-//
-//         // window containing multiple clips past bounds
-//         //  [ ]
-//         // 11-22
-//         {
-//             let mut track = Track::new();
-//             let mut buf = vec![0.0; 3];
-//             track.instantiate_clip(0, Clip::new(vec![1.0; 2]));
-//             track.instantiate_clip(3, Clip::new(vec![2.0; 2]));
-//             track.render(1, &mut buf);
-//             assert_eq!(buf, vec![1.0, 0.0, 2.0])
-//         }
-//
-//         // window containing multiple overlapping clips
-//         // [    ]
-//         // 1111--
-//         // --2222
-//         {
-//             let mut track = Track::new();
-//             let mut buf = vec![0.0; 6];
-//             track.instantiate_clip(0, Clip::new(vec![1.0; 4]));
-//             track.instantiate_clip(2, Clip::new(vec![2.0; 4]));
-//             track.render(0, &mut buf);
-//             assert_eq!(buf, vec![1.0, 1.0, 2.0, 2.0, 2.0, 2.0])
-//         }
-//
-//         // window containing short overlapping clip
-//         // [    ]
-//         // 111111
-//         // --22--
-//         {
-//             let mut track = Track::new();
-//             let mut buf = vec![0.0; 6];
-//             track.instantiate_clip(0, Clip::new(vec![1.0; 6]));
-//             track.instantiate_clip(2, Clip::new(vec![2.0; 2]));
-//             track.render(0, &mut buf);
-//             assert_eq!(buf, vec![1.0, 1.0, 2.0, 2.0, 1.0, 1.0])
-//         }
-//     }
-// }
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_add_clip() {
+        let mut track = Track::new();
+        let mut db = ClipDatabase::new();
+
+        let clip_1 = db.add(Clip::new(vec![1.0]));
+        let result = track.instantiate_clip(clip_1, 0);
+        assert_eq!(clip_1, result.clip_id);
+
+        let clip_2 = db.add(Clip::new(vec![2.0]));
+        let result = track.instantiate_clip(clip_2, 1);
+        assert_eq!(clip_2, result.clip_id);
+    }
+
+    #[test]
+    fn test_last_clip() {
+        let mut track = Track::new();
+        let mut db = ClipDatabase::new();
+
+        assert!(track.last_clip(&db).is_none(),
+                "last clip must be None when track does not contain clips");
+
+        // 1. only clip in the track should be the last clip
+        // last
+        // v
+        // 1--------------
+        let clip = db.add(Clip::new(vec![1.0]));
+        track.instantiate_clip(clip, 0);
+        let last_clip = track.last_clip(&db)
+            .expect("last clip must be present when track contains clips");
+
+        assert_eq!(clip, last_clip.clip_id);
+
+        // 2. two disjoint clips, latter should be the last clip
+        //   last
+        //   v
+        // 1-2------------
+        let clip = db.add(Clip::new(vec![2.0]));
+        track.instantiate_clip(clip, 2);
+        let last_clip = track.last_clip(&db)
+            .expect("last clip must be present when track contains clips");
+
+        assert_eq!(clip, last_clip.clip_id);
+
+        // 3. overlapping clips, clip with latest end should be the last clip
+        //          last
+        //          v
+        // 1-2------------
+        // 3333333333-----
+        let clip = db.add(Clip::new(vec![3.0; 10]));
+        track.instantiate_clip(clip, 0);
+        let last_clip = track.last_clip(&db)
+            .expect("last clip must be present when track contains clips");
+
+        assert_eq!(clip, last_clip.clip_id);
+    }
+
+    #[test]
+    fn test_clip_at() {
+        let mut track = Track::new();
+        let mut db = ClipDatabase::new();
+
+        assert!(track.clip_at(&db, 0).is_none());
+
+        let clip = db.add(Clip::new(vec![1.0, 1.0]));
+        track.instantiate_clip(clip, 0);
+
+        assert_eq!(clip, track.clip_at(&db, 0).unwrap().clip_id);
+        assert_eq!(clip, track.clip_at(&db, 1).unwrap().clip_id);
+        assert!(track.clip_at(&db, 2).is_none());
+
+        let short_clip = db.add(Clip::new(vec![2.0]));
+        track.instantiate_clip(short_clip, 1);
+
+        assert_eq!(clip, track.clip_at(&db, 0).unwrap().clip_id);
+        assert_eq!(short_clip, track.clip_at(&db, 1).unwrap().clip_id,
+                   "latest added clip should take precedence when overlapping");
+        assert!(track.clip_at(&db, 2).is_none());
+    }
+
+    #[test]
+    fn test_next_clip() {
+        let mut track = Track::new();
+        let mut db = ClipDatabase::new();
+
+        assert!(track.next_clip(0).is_none());
+
+        // 1. query during clip should not return clip
+        // t
+        // v        next=None
+        // 11-----------
+        let clip = db.add(Clip::new(vec![1.0, 1.0]));
+        track.instantiate_clip(clip, 0);
+        assert!(track.next_clip(0).is_none(),
+                "next_clip should not return clips where start <= t < end");
+
+        // 2. two disjoint clips, query during first should return second
+        // t  next
+        // v  v
+        // 11-2---------
+        let clip = db.add(Clip::new(vec![2.0]));
+        track.instantiate_clip(clip, 3);
+        let result = track.next_clip(0).unwrap();
+        assert_eq!(3, result.time);
+        assert_eq!(clip, result.clip_id);
+        assert!(track.next_clip(3).is_none());
+
+        // 3. clips overlapping at t, query before overlap should return overlapping clip
+        // t
+        // v
+        // 11-2---------
+        // -3-----------
+        //  ^
+        //  next
+        let clip = db.add(Clip::new(vec![3.0]));
+        track.instantiate_clip(clip, 1);
+        let result = track.next_clip(0).unwrap();
+        assert_eq!(1, result.time);
+        assert_eq!(clip, result.clip_id);
+
+        // 4. t is past end of all clips, query should return none
+        assert!(track.next_clip(1234).is_none());
+    }
+
+    #[test]
+    fn test_render() {
+        {
+            let track = Track::new();
+            let db = ClipDatabase::new();
+            let mut buf = vec![0.0; 4];
+            track.render(&db, 0, &mut buf);
+            assert_eq!(buf, vec![0.0; 4]);
+        }
+
+        // clip that matches window exactly
+        // [  ]
+        // 1111
+        {
+            let mut track = Track::new();
+            let mut db = ClipDatabase::new();
+            let mut buf = vec![0.0; 4];
+
+            track.instantiate_clip(db.add(Clip::new(vec![1.0; 4])), 0);
+            track.render(&db, 0, &mut buf);
+            assert_eq!(buf, vec![1.0; 4])
+        }
+
+        // window expands past clip on right
+        //   [  ]
+        // 1111--
+        {
+            let mut track = Track::new();
+            let mut db = ClipDatabase::new();
+            let mut buf = vec![0.0; 4];
+            track.instantiate_clip(db.add(Clip::new(vec![1.0; 4])), 0);
+            track.render(&db, 2, &mut buf);
+            assert_eq!(buf, vec![1.0, 1.0, 0.0, 0.0])
+        }
+
+        // window expands past clip on left
+        // [  ]
+        // --1111
+        {
+            let mut track = Track::new();
+            let mut db = ClipDatabase::new();
+            let mut buf = vec![0.0; 4];
+            track.instantiate_clip(db.add(Clip::new(vec![1.0; 4])), 2);
+            track.render(&db, 0, &mut buf);
+            assert_eq!(buf, vec![0.0, 0.0, 1.0, 1.0])
+        }
+
+        // window expands past clip on both sides
+        // [    ]
+        // --11--
+        {
+            let mut track = Track::new();
+            let mut db = ClipDatabase::new();
+            let mut buf = vec![0.0; 6];
+            track.instantiate_clip(db.add(Clip::new(vec![1.0; 2])), 2);
+            track.render(&db, 0, &mut buf);
+            assert_eq!(buf, vec![0.0, 0.0, 1.0, 1.0, 0.0, 0.0])
+        }
+
+        // window beyond all clips
+        //             [  ]
+        // --11-- ... ------
+        {
+            let mut track = Track::new();
+            let mut db = ClipDatabase::new();
+            let mut buf = vec![0.0; 4];
+            track.instantiate_clip(db.add(Clip::new(vec![1.0; 2])), 2);
+            track.render(&db, 100, &mut buf);
+            assert_eq!(buf, vec![0.0; 4])
+        }
+
+        // window containing multiple clips
+        // [ ]
+        // 1-2
+        {
+            let mut track = Track::new();
+            let mut db = ClipDatabase::new();
+            let mut buf = vec![0.0; 3];
+            track.instantiate_clip(db.add(Clip::new(vec![1.0])), 0);
+            track.instantiate_clip(db.add(Clip::new(vec![2.0])), 2);
+            track.render(&db, 0, &mut buf);
+            assert_eq!(buf, vec![1.0, 0.0, 2.0])
+        }
+
+        // window containing multiple clips past bounds
+        //  [ ]
+        // 11-22
+        {
+            let mut track = Track::new();
+            let mut db = ClipDatabase::new();
+            let mut buf = vec![0.0; 3];
+            track.instantiate_clip(db.add(Clip::new(vec![1.0; 2])), 0);
+            track.instantiate_clip(db.add(Clip::new(vec![2.0; 2])), 3);
+            track.render(&db, 1, &mut buf);
+            assert_eq!(buf, vec![1.0, 0.0, 2.0])
+        }
+
+        // window containing multiple overlapping clips
+        // [    ]
+        // 1111--
+        // --2222
+        {
+            let mut track = Track::new();
+            let mut db = ClipDatabase::new();
+            let mut buf = vec![0.0; 6];
+            track.instantiate_clip(db.add(Clip::new(vec![1.0; 4])), 0);
+            track.instantiate_clip(db.add(Clip::new(vec![2.0; 4])), 2);
+            track.render(&db, 0, &mut buf);
+            assert_eq!(buf, vec![1.0, 1.0, 2.0, 2.0, 2.0, 2.0])
+        }
+
+        // window containing short overlapping clip
+        // [    ]
+        // 111111
+        // --22--
+        {
+            let mut track = Track::new();
+            let mut db = ClipDatabase::new();
+            let mut buf = vec![0.0; 6];
+            track.instantiate_clip(db.add(Clip::new(vec![1.0; 6])), 0);
+            track.instantiate_clip(db.add(Clip::new(vec![2.0; 2])), 2);
+            track.render(&db, 0, &mut buf);
+            assert_eq!(buf, vec![1.0, 1.0, 2.0, 2.0, 1.0, 1.0])
+        }
+    }
+}
