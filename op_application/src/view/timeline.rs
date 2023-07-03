@@ -1,7 +1,6 @@
-use std::io::Read;
 use std::iter;
 
-use iced::{Color, Element, Length, Point, Rectangle, Size, Theme};
+use iced::{Color, Element, Length, Point, Rectangle, Theme};
 use iced::alignment::Vertical;
 use iced::mouse::Interaction;
 use iced::widget::Canvas;
@@ -10,6 +9,7 @@ use iced_native::event::Status;
 use iced_native::row;
 use iced_native::widget::{column, container, text};
 
+use op_engine::clip_database::{ClipDatabase, ClipId};
 use op_engine::track::ClipInstance;
 
 use crate::OpMessage;
@@ -18,21 +18,27 @@ const BASE_SAMPLES_PER_PIXEL: f32 = 300.0;
 const BASE_RULER_SPACING_SAMPLES: f32 = 22050.0;
 
 struct ClipLayout {
-    clip_instance: ClipInstance,
-    zoom: f32,
-    samples_per_pixel: usize,
+    clip_id: ClipId,
+    waveform: Vec<f32>,
+
     x: f32,
     width: f32,
 }
 
 impl ClipLayout {
-    fn new(clip: ClipInstance, zoom: f32, start_time: op_engine::Time) -> Self {
+    fn new(clip_instance: &ClipInstance, clip_db: &ClipDatabase, zoom: f32, start_time: op_engine::Time) -> Self {
+        let clip = clip_db.get(clip_instance.clip_id).expect("TODO: Missing clip UI");
+
         Self {
-            zoom,
-            samples_per_pixel: (BASE_SAMPLES_PER_PIXEL * zoom) as usize,
-            x: zoom * BASE_SAMPLES_PER_PIXEL * (clip.time - start_time) as f32,
+            clip_id: clip_instance.clip_id,
+            waveform: clip.data.chunks((zoom * BASE_SAMPLES_PER_PIXEL) as usize)
+                .map(|chunk| {
+                    chunk.iter().map(|s| s.abs()).sum::<f32>() / (chunk.len() as f32)
+                })
+                .collect(),
+
+            x: zoom * BASE_SAMPLES_PER_PIXEL * (clip_instance.time - start_time) as f32,
             width: clip.len() as f32 / (zoom * BASE_SAMPLES_PER_PIXEL),
-            clip_instance: clip,
         }
     }
 
@@ -45,28 +51,22 @@ impl ClipLayout {
         }
     }
 
+    fn waveform_y(y: &f32, height: f32) -> f32 {
+        1.0 * (1.0 - y.abs()) * (height - 12.0)
+    }
+
     pub fn draw(&self, bounds: &Rectangle, hovered: bool) -> impl Iterator<Item=Geometry> {
         let mut frame = Frame::new(bounds.size());
 
-        if self.clip_instance.clip.data.len() > 0 {
-            let get_y = |sample: f32| {
-                1.0 * (1.0 - sample.abs()) * (bounds.height - 12.0)
-            };
+        if self.waveform.len() > 0 {
+            let mut point = Point::new(self.x, Self::waveform_y(&self.waveform[0], bounds.height));
 
-            let mut point = Point::ORIGIN;
             let path = Path::new(|builder| {
-                builder.move_to(Point::new(self.x, get_y(self.clip_instance.clip.data[0])));
+                builder.move_to(point);
 
-                for i in 0..self.clip_instance.clip.data.len() / self.samples_per_pixel {
-                    let mut sample = 0.0;
-
-                    for j in 0..self.samples_per_pixel {
-                        sample += self.clip_instance.clip.data[i * self.samples_per_pixel + j].abs();
-                    }
-
-                    sample /= self.samples_per_pixel as f32;
-                    point.x = self.x + i as f32;
-                    point.y = get_y(sample);
+                for y in self.waveform.iter().skip(1) {
+                    point.x += 1.0;
+                    point.y = Self::waveform_y(y, bounds.height);
                     builder.line_to(point);
                 }
 
@@ -97,14 +97,14 @@ pub struct TrackProgramState {
 }
 
 impl TrackProgram {
-    pub fn new(track: &op_engine::Track, zoom: f32, current_time: op_engine::Time) -> Self {
+    pub fn new(track: &op_engine::Track, clip_db: &ClipDatabase, zoom: f32, current_time: op_engine::Time) -> Self {
         Self {
             zoom,
             current_time,
             start_time: 0,
-
-            // TODO: Borrow
-            clip_layouts: track.iter_clips().map(|c| { ClipLayout::new(c.clone(), zoom, 0) }).collect(),
+            clip_layouts: track.iter_clips()
+                .map(|c| { ClipLayout::new(c, clip_db, zoom, 0) })
+                .collect(),
         }
     }
 
@@ -127,12 +127,12 @@ impl TrackProgram {
         let first_mark_time = first_mark_number * BASE_RULER_SPACING_SAMPLES as usize;
 
         let path = Path::new(|builder| {
-             for i in 0..marks {
-                 let time = first_mark_time + i * BASE_RULER_SPACING_SAMPLES as usize;
-                 let x = time as f32 / (self.zoom * BASE_SAMPLES_PER_PIXEL);
-                 builder.move_to(Point::new(x, 0.0));
-                 builder.line_to(Point::new(x, bounds.height));
-             }
+            for i in 0..marks {
+                let time = first_mark_time + i * BASE_RULER_SPACING_SAMPLES as usize;
+                let x = time as f32 / (self.zoom * BASE_SAMPLES_PER_PIXEL);
+                builder.move_to(Point::new(x, 0.0));
+                builder.line_to(Point::new(x, bounds.height));
+            }
         });
 
         let mut frame = Frame::new(bounds.size());
@@ -205,8 +205,8 @@ impl Program<OpMessage> for TrackProgram {
     }
 }
 
-fn track_view(number: usize, track: &op_engine::Track, zoom: f32, current_time: usize) -> Element<'static, OpMessage> {
-    let prog = TrackProgram::new(track, zoom, current_time);
+fn track_view(number: usize, track: &op_engine::Track, clip_db: &ClipDatabase, zoom: f32, current_time: usize) -> Element<'static, OpMessage> {
+    let prog = TrackProgram::new(track, clip_db, zoom, current_time);
     let clip_area = Canvas::new(prog).width(Length::Fill);
 
     let track_header = text(format!("{}", number))
@@ -220,15 +220,16 @@ fn track_view(number: usize, track: &op_engine::Track, zoom: f32, current_time: 
         .into()
 }
 
-pub fn timeline_view(timeline: &op_engine::Timeline, zoom: f32, current_time: usize) -> Element<'static, OpMessage> {
+pub fn timeline_view(timeline: &op_engine::Timeline, clip_db: &ClipDatabase, zoom: f32, current_time: usize) -> Element<'static, OpMessage> {
     container(
         column(timeline.tracks
             .iter()
             .enumerate()
             .map(|(i, track)| {
-                track_view(i, track, zoom, current_time)
+                track_view(i, track, clip_db, zoom, current_time)
             })
-            .collect()))
+            .collect())
+    )
         .center_y()
         .width(Length::Fill)
         .height(Length::Fill)

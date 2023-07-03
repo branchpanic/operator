@@ -74,8 +74,8 @@ impl Player {
 
     fn write_recorded_clip(&mut self) {
         let mut project = self.project.write().unwrap();
-        let clip = Clip::new(take(&mut self.record_buf));
-        project.timeline.tracks[self.record_track].add_clip(self.record_start, clip);
+        let id = project.clip_database.add(Clip::new(take(&mut self.record_buf)));
+        project.timeline.tracks[self.record_track].instantiate_clip(id, self.record_start);
     }
 
     pub fn seek(&mut self, time: Time) {
@@ -119,9 +119,9 @@ impl Player {
 
         if self.playing_project {
             if self.recording {
-                project.timeline.render_exclude(self.time, &mut self.output_buf[..src_samples], &[self.record_track]);
+                project.timeline.render_exclude(&project.clip_database, self.time, &mut self.output_buf[..src_samples], &[self.record_track]);
             } else {
-                project.timeline.render(self.time, &mut self.output_buf[..src_samples]);
+                project.timeline.render(&project.clip_database, self.time, &mut self.output_buf[..src_samples]);
             }
 
             self.time += src_samples;

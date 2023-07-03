@@ -9,7 +9,6 @@ edition = "2021"
 anyhow = "1.0.70"
 cpal = "0.15.2"
 iced = { version = "0.9.0", features = ["smol", "canvas"] }
-iced_aw = { version = "0.5", default-features = false, features = ["number_input"] }
 iced_native = "0.10.3"
 iced_wgpu = "0.10.0"
 midly = "0.5.3"

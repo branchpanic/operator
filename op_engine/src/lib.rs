@@ -1,3 +1,10 @@
+pub use clip::Clip;
+pub use player::Player;
+pub use project::Project;
+pub use session::Session;
+pub use timeline::Timeline;
+pub use track::Track;
+
 pub mod track;
 mod clip;
 mod timeline;
@@ -5,13 +12,7 @@ mod player;
 mod session;
 mod project;
 pub mod generator;
-
-pub use track::Track;
-pub use clip::Clip;
-pub use timeline::Timeline;
-pub use player::Player;
-pub use session::Session;
-pub use project::Project;
+pub mod clip_database;
 
 // TODO: Make this type-safe
 pub type Time = usize;  // in samples

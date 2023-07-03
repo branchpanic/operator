@@ -1,9 +1,7 @@
 use hound::SampleFormat;
 
 use crate::clip::ClipError::ClipReadError;
-use crate::project::Project;
 
-/// Represents a chunk of single channel, f32 audio.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Clip {
     pub data: Vec<f32>,
@@ -24,20 +22,15 @@ pub enum ClipError {
 
 impl Clip {
     pub fn new(data: Vec<f32>) -> Self {
-        Self {
-            data
-        }
+        Self { data }
     }
 
-    // TODO: Session should probably own sample data, since this will load from disk every time.
-    // (However, this isn't actually on the critical path. Not many samples will be loaded directly
-    // onto the timeline. Instead, they'll be played through instruments.)
-    pub fn load_wav(project: &Project, path: &String) -> Result<Self, ClipError> {
+    pub fn load_wav(sample_rate: u32, path: &String) -> Result<Self, ClipError> {
         let mut reader = hound::WavReader::open(path).map_err(|e| ClipReadError { source: e })?;
         let spec = reader.spec();
 
         // TODO: Resample
-        debug_assert_eq!(spec.sample_rate, project.sample_rate);
+        debug_assert_eq!(spec.sample_rate, sample_rate);
         debug_assert_eq!(spec.sample_format, SampleFormat::Int);
 
         let samples = reader.samples::<i32>()
@@ -51,8 +44,6 @@ impl Clip {
         Ok(Clip::new(samples))
     }
 
-    // Getter because we might introduce start/end points. That might be better expressed as a
-    // slice, though.
     pub fn len(&self) -> usize {
         self.data.len()
     }

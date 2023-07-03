@@ -2,6 +2,7 @@ use std::{fs, io};
 use std::path::Path;
 
 use crate::{Time, Timeline};
+use crate::clip_database::ClipDatabase;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ProjectError {
@@ -27,6 +28,7 @@ pub enum ProjectError {
 pub struct Project {
     pub sample_rate: u32,
     pub timeline: Timeline,
+    pub clip_database: ClipDatabase,
 }
 
 const PROJECT_EXPORT_SPEC: hound::WavSpec = hound::WavSpec {
@@ -43,6 +45,7 @@ impl Project {
         Self {
             sample_rate: 44100,
             timeline: Timeline::new(),
+            clip_database: ClipDatabase::new(),
         }
     }
 
@@ -62,7 +65,7 @@ impl Project {
     }
 
     pub fn export_wav(&self, path: &Path) -> Result<(), ProjectError> {
-        let samples = self.timeline.render_all();
+        let samples = self.timeline.render_all(&self.clip_database);
 
         let mut writer = hound::WavWriter::create(path, PROJECT_EXPORT_SPEC).unwrap();
 

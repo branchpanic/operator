@@ -1,4 +1,5 @@
 use crate::{mix, Time, Track};
+use crate::clip_database::ClipDatabase;
 use crate::track::ClipInstance;
 
 /// A Timeline is a composition of a fixed number of tracks. All of the tracks can be mixed down to
@@ -15,9 +16,9 @@ impl Timeline {
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn len(&self, database: &ClipDatabase) -> usize {
         self.tracks.iter()
-            .map(|t| t.len())
+            .map(|t| t.len(database))
             .max()
             .unwrap()
     }
@@ -31,12 +32,12 @@ impl Timeline {
             })
     }
 
-    pub fn render(&self, start_time: Time, buf: &mut [f32]) {
-        self.render_exclude(start_time, buf, &[]);
+    pub fn render(&self, database: &ClipDatabase, start_time: Time, buf: &mut [f32]) {
+        self.render_exclude(database, start_time, buf, &[]);
     }
 
-    pub fn render_exclude(&self, start_time: Time, buf: &mut [f32], exclude: &[usize]) {
-        if start_time >= self.len() {
+    pub fn render_exclude(&self, database: &ClipDatabase, start_time: Time, buf: &mut [f32], exclude: &[usize]) {
+        if start_time >= self.len(database) {
             buf.fill(0.0);
             return;
         }
@@ -46,7 +47,7 @@ impl Timeline {
             .filter(|(i, _)| !exclude.contains(i))
             .map(|(_, t)| {
                 let mut track_buf = vec![0.0f32; buf.len()];
-                t.render(start_time, &mut track_buf);
+                t.render(database, start_time, &mut track_buf);
                 track_buf
             }).collect();
 
@@ -54,13 +55,13 @@ impl Timeline {
         mix(&sources, buf)
     }
 
-    pub fn render_all(&self) -> Vec<f32> {
+    pub fn render_all(&self, database: &ClipDatabase) -> Vec<f32> {
         if self.tracks.is_empty() {
             return Vec::new();
         }
 
-        let mut buf = vec![0.0f32; self.len()];
-        self.render(0, &mut buf);
+        let mut buf = vec![0.0f32; self.len(database)];
+        self.render(database, 0, &mut buf);
         buf
     }
 }

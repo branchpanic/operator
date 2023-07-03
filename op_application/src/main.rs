@@ -10,7 +10,6 @@ use iced::keyboard::KeyCode;
 use iced::widget::{button, checkbox, column, container, pick_list, row, slider, text};
 
 use op_engine::{Project, Session};
-use op_engine::generator::Generator;
 
 use crate::faust::{FaustDsp, FaustGenerator};
 use crate::view::timeline::timeline_view;
@@ -266,7 +265,7 @@ impl Application for OpApplication {
             .padding(8)
             .width(Length::Fill);
 
-        let timeline = timeline_view(&project.timeline, self.zoom, self.session.time());
+        let timeline = timeline_view(&project.timeline, &project.clip_database, self.zoom, self.session.time());
 
         let temp_sliders = container(column![
             container(row![
