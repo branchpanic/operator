@@ -163,6 +163,11 @@ impl Track {
     pub fn iter_clips(&self) -> Iter<'_, ClipInstance> {
         self.clips.iter()
     }
+
+    // TODO: Using Clip ID to uniquely identify ClipInstances isn't correct, but currently works
+    pub fn get_clip_mut(&mut self, id: ClipId) -> Option<&mut ClipInstance> {
+        self.clips.iter_mut().find(|c| c.clip_id == id)
+    }
 }
 
 #[cfg(test)]

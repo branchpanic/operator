@@ -1,6 +1,6 @@
 use std::iter;
 
-use iced::{Color, Element, Length, Point, Rectangle, Theme};
+use iced::{Color, Element, Length, mouse, Point, Rectangle, Theme};
 use iced::alignment::Vertical;
 use iced::mouse::Interaction;
 use iced::widget::Canvas;
@@ -12,10 +12,18 @@ use iced_native::widget::{column, container, text};
 use op_engine::clip_database::{ClipDatabase, ClipId};
 use op_engine::track::ClipInstance;
 
-use crate::OpMessage;
-
 const BASE_SAMPLES_PER_PIXEL: f32 = 300.0;
 const BASE_RULER_SPACING_SAMPLES: f32 = 22050.0;
+
+fn samples_to_pixels(samples: i32, zoom: f32) -> f32 {
+    let samples_per_pixel = BASE_SAMPLES_PER_PIXEL * zoom;
+    samples as f32 / samples_per_pixel
+}
+
+fn pixels_to_samples(pixels: f32, zoom: f32) -> i32 {
+    let samples_per_pixel = BASE_SAMPLES_PER_PIXEL * zoom;
+    (pixels * samples_per_pixel) as i32
+}
 
 struct ClipLayout {
     clip_id: ClipId,
@@ -23,6 +31,7 @@ struct ClipLayout {
 
     x: f32,
     width: f32,
+    zoom: f32,
 }
 
 impl ClipLayout {
@@ -31,14 +40,15 @@ impl ClipLayout {
 
         Self {
             clip_id: clip_instance.clip_id,
-            waveform: clip.data.chunks((zoom * BASE_SAMPLES_PER_PIXEL) as usize)
+            waveform: clip.data.chunks(pixels_to_samples(1.0, zoom) as usize)
                 .map(|chunk| {
                     chunk.iter().map(|s| s.abs()).sum::<f32>() / (chunk.len() as f32)
                 })
                 .collect(),
 
-            x: zoom * BASE_SAMPLES_PER_PIXEL * (clip_instance.time - start_time) as f32,
-            width: clip.len() as f32 / (zoom * BASE_SAMPLES_PER_PIXEL),
+            x: samples_to_pixels((clip_instance.time - start_time) as i32, zoom),
+            width: samples_to_pixels(clip.len() as i32, zoom),
+            zoom,
         }
     }
 
@@ -55,11 +65,10 @@ impl ClipLayout {
         1.0 * (1.0 - y.abs()) * (height - 12.0)
     }
 
-    pub fn draw(&self, bounds: &Rectangle, hovered: bool) -> impl Iterator<Item=Geometry> {
+    pub fn draw(&self, bounds: &Rectangle, hovered: bool, offset: i32) -> impl Iterator<Item=Geometry> {
         let mut frame = Frame::new(bounds.size());
-
         if self.waveform.len() > 0 {
-            let mut point = Point::new(self.x, Self::waveform_y(&self.waveform[0], bounds.height));
+            let mut point = Point::new(self.x + samples_to_pixels(offset, self.zoom), Self::waveform_y(&self.waveform[0], bounds.height));
 
             let path = Path::new(|builder| {
                 builder.move_to(point);
@@ -93,7 +102,15 @@ pub struct TrackProgram {
 
 #[derive(Default)]
 pub struct TrackProgramState {
-    hovered_clip: Option<usize>,
+    hovered_clip: Option<ClipId>,
+    dragging_clip: Option<ClipId>,
+    drag_origin: i32,
+    drag_current: i32,
+}
+
+#[derive(Debug, Clone)]
+pub enum TrackMessage {
+    MoveClip { clip_id: ClipId, delta_samples: i32 },
 }
 
 impl TrackProgram {
@@ -123,13 +140,13 @@ impl TrackProgram {
     fn draw_ruler(&self, bounds: &Rectangle) -> impl Iterator<Item=Geometry> {
         let marks = 20;
 
-        let first_mark_number = (self.start_time / BASE_RULER_SPACING_SAMPLES as usize);
+        let first_mark_number = self.start_time / BASE_RULER_SPACING_SAMPLES as usize;
         let first_mark_time = first_mark_number * BASE_RULER_SPACING_SAMPLES as usize;
 
         let path = Path::new(|builder| {
             for i in 0..marks {
                 let time = first_mark_time + i * BASE_RULER_SPACING_SAMPLES as usize;
-                let x = time as f32 / (self.zoom * BASE_SAMPLES_PER_PIXEL);
+                let x = samples_to_pixels(time as i32, self.zoom);
                 builder.move_to(Point::new(x, 0.0));
                 builder.line_to(Point::new(x, bounds.height));
             }
@@ -146,7 +163,7 @@ impl TrackProgram {
 
     fn draw_playhead(&self, bounds: &Rectangle) -> impl Iterator<Item=Geometry> {
         let playhead_relative_x = self.current_time - self.start_time;
-        let x = playhead_relative_x as f32 / (self.zoom * BASE_SAMPLES_PER_PIXEL);
+        let x = samples_to_pixels(playhead_relative_x as i32, self.zoom);
 
         let line = Path::line(
             Point::new(x, 0.0),
@@ -174,17 +191,41 @@ impl TrackProgram {
     }
 }
 
-impl Program<OpMessage> for TrackProgram {
+impl Program<TrackMessage> for TrackProgram {
     type State = TrackProgramState;
 
-    fn update(&self, state: &mut Self::State, _event: Event, bounds: Rectangle, cursor: Cursor) -> (Status, Option<OpMessage>) {
+    fn update(&self, state: &mut Self::State, event: Event, bounds: Rectangle, cursor: Cursor) -> (Status, Option<TrackMessage>) {
         state.hovered_clip = self.clip_layouts.iter()
-            .enumerate()
-            .find(|(_, c)| {
+            .find(|c| {
                 let clip_bounds = c.clip_bounds(&bounds);
                 cursor.is_over(&clip_bounds)
             })
-            .map(|(i, _)| i);
+            .map(|c| c.clip_id);
+
+        if let Event::Mouse(mouse::Event::CursorMoved { position, .. }) = event {
+            state.drag_current = pixels_to_samples(position.x, self.zoom);
+        }
+
+        if let Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) = event {
+            if let Some(clip_id) = state.dragging_clip {
+                println!("Released clip {:?}, change of {:?} samples", clip_id, state.drag_current - state.drag_origin);
+                state.dragging_clip = None;
+                return (Status::Captured, Some(TrackMessage::MoveClip { clip_id, delta_samples: state.drag_current - state.drag_origin }));
+            }
+        }
+
+        if let Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) = event {
+            if let Some(clip_id) = state.hovered_clip {
+                println!("Pressed clip {:?}", clip_id);
+                state.dragging_clip = Some(clip_id);
+
+                if let Some(cursor_pos) = cursor.position() {
+                    state.drag_origin = pixels_to_samples(cursor_pos.x, self.zoom);
+                }
+
+                return (Status::Captured, None);
+            }
+        }
 
         (Status::Ignored, None)
     }
@@ -193,11 +234,21 @@ impl Program<OpMessage> for TrackProgram {
         self.draw_baseline(&bounds)
             .chain(self.draw_ruler(&bounds))
             .chain(self.draw_playhead(&bounds))
-            .chain(self.clip_layouts.iter().enumerate().flat_map(|(i, c)| { c.draw(&bounds, Some(i) == state.hovered_clip) }))
+            .chain(self.clip_layouts.iter().flat_map(|c| {
+                let is_dragging = Some(c.clip_id) == state.dragging_clip;
+                let is_highlighted = is_dragging || (state.dragging_clip.is_none() && Some(c.clip_id) == state.hovered_clip);
+                let offset = if is_dragging { state.drag_current - state.drag_origin } else { 0 };
+
+                c.draw(&bounds, is_highlighted, offset)
+            }))
             .collect()
     }
 
     fn mouse_interaction(&self, state: &Self::State, _bounds: Rectangle, _cursor: Cursor) -> Interaction {
+        if state.dragging_clip.is_some() {
+            return Interaction::Grabbing;
+        }
+
         match state.hovered_clip {
             Some(_) => Interaction::Grab,
             _ => Interaction::default(),
@@ -205,9 +256,9 @@ impl Program<OpMessage> for TrackProgram {
     }
 }
 
-fn track_view(number: usize, track: &op_engine::Track, clip_db: &ClipDatabase, zoom: f32, current_time: usize) -> Element<'static, OpMessage> {
-    let prog = TrackProgram::new(track, clip_db, zoom, current_time);
-    let clip_area = Canvas::new(prog).width(Length::Fill);
+fn track_view(number: usize, track: &op_engine::Track, clip_db: &ClipDatabase, zoom: f32, current_time: usize) -> Element<'static, TrackMessage> {
+    let program = TrackProgram::new(track, clip_db, zoom, current_time);
+    let clip_area = Canvas::new(program).width(Length::Fill);
 
     let track_header = text(format!("{}", number))
         .height(Length::Fill)
@@ -220,13 +271,18 @@ fn track_view(number: usize, track: &op_engine::Track, clip_db: &ClipDatabase, z
         .into()
 }
 
-pub fn timeline_view(timeline: &op_engine::Timeline, clip_db: &ClipDatabase, zoom: f32, current_time: usize) -> Element<'static, OpMessage> {
+#[derive(Debug, Clone)]
+pub enum TimelineMessage {
+    Track(usize, TrackMessage),
+}
+
+pub fn timeline_view(timeline: &op_engine::Timeline, clip_db: &ClipDatabase, zoom: f32, current_time: usize) -> Element<'static, TimelineMessage> {
     container(
         column(timeline.tracks
             .iter()
             .enumerate()
             .map(|(i, track)| {
-                track_view(i, track, clip_db, zoom, current_time)
+                track_view(i, track, clip_db, zoom, current_time).map(move |m| TimelineMessage::Track(i, m))
             })
             .collect())
     )
@@ -234,4 +290,23 @@ pub fn timeline_view(timeline: &op_engine::Timeline, clip_db: &ClipDatabase, zoo
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+pub fn track_update(track: &mut op_engine::Track, message: TrackMessage) {
+    match message {
+        TrackMessage::MoveClip { clip_id, delta_samples, .. } => {
+            if let Some(mut instance) = track.get_clip_mut(clip_id) {
+                instance.time = (instance.time as i32 + delta_samples) as usize;
+            }
+        }
+    }
+}
+
+pub fn timeline_update(timeline: &mut op_engine::Timeline, message: TimelineMessage) {
+    match message {
+        TimelineMessage::Track(track_number, message) => {
+            let track = &mut timeline.tracks[track_number];
+            track_update(track, message);
+        }
+    }
 }

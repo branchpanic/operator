@@ -12,7 +12,7 @@ use iced::widget::{button, checkbox, column, container, pick_list, row, slider, 
 use op_engine::{Project, Session};
 
 use crate::faust::{FaustDsp, FaustGenerator};
-use crate::view::timeline::timeline_view;
+use crate::view::timeline::{timeline_update, timeline_view, TimelineMessage};
 use crate::virtual_keyboard::VirtualKeyboard;
 
 mod virtual_keyboard;
@@ -53,6 +53,8 @@ pub enum OpMessage {
     Export,
     SetZoom(f32),
     SetGenerator(usize),
+
+    Timeline(TimelineMessage),
 }
 
 fn apply_default_generator(session: &mut Session) {
@@ -217,6 +219,10 @@ impl Application for OpApplication {
                 let project = self.session.project.read().unwrap();
                 project.export_wav(&path).unwrap();
             }
+
+            OpMessage::Timeline(message) => {
+                timeline_update(&mut self.session.project.write().unwrap().timeline, message);
+            }
         };
 
         Command::none()
@@ -265,7 +271,9 @@ impl Application for OpApplication {
             .padding(8)
             .width(Length::Fill);
 
-        let timeline = timeline_view(&project.timeline, &project.clip_database, self.zoom, self.session.time());
+        let timeline =
+            timeline_view(&project.timeline, &project.clip_database, self.zoom, self.session.time())
+                .map(|m| OpMessage::Timeline(m));
 
         let temp_sliders = container(column![
             container(row![
